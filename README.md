@@ -233,8 +233,14 @@ Mở **Termux**, dán **một dòng**:
 curl -sL https://raw.githubusercontent.com/BachDaThan/R1-Y/main/tools/android/install.sh | bash
 ```
 
-Script tự cài python/git/adb, tải firmware về, và **gắn phím `R1-Y` lên thanh
-phím Termux** — từ đó chỉ cần **chạm 1 cái** là menu hiện ra:
+Script tự cài python/git/adb, tải firmware về, tạo **lệnh ngắn `r1y`** và gắn
+**phím `r1y` lên thanh phím Termux**. Sau đó:
+
+- **Chạm phím `r1y` → Enter** (nhanh)
+- Hoặc **chạm 1 lần** ngoài màn hình chính bằng app **Termux:Widget**
+- Hoặc gõ `r1y`
+
+Menu hiện ra:
 
 ```
    1  Cài mới từ đầu (A→Z) — tải APK từ GitHub rồi cài
@@ -243,8 +249,9 @@ phím Termux** — từ đó chỉ cần **chạm 1 cái** là menu hiện ra:
    ...
 ```
 
-Muốn lối tắt ngoài màn hình chính: cài app **Termux:Widget** → giữ màn hình
-chính → Tiện ích → Termux → chọn **R1-Y**.
+> Termux không cho gắn *lệnh* vào phím thanh phím (phím chỉ gõ chữ), nên phím
+> `r1y` chỉ gõ sẵn chữ — bấm Enter để chạy. Muốn **1 chạm chạy luôn** thì dùng
+> **Termux:Widget** như trên.
 
 📖 Chi tiết: **[docs/TERMUX.md](docs/TERMUX.md)**
 

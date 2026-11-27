@@ -90,21 +90,61 @@ LAUNCH_EOF
 chmod +x "$LAUNCH"
 ok "Đã tạo lối tắt: ~/r1-y.sh"
 
+# lệnh ngắn: gõ 'r1y' ở BẤT KỲ thư mục nào là chạy (không cần gõ đường dẫn dài)
+SHORT_OK=0
+if [ -n "${PREFIX:-}" ] && [ -d "$PREFIX/bin" ] && [ -w "$PREFIX/bin" ]; then
+    cat > "$PREFIX/bin/r1y" << 'SHORT_EOF'
+#!/data/data/com.termux/files/usr/bin/bash
+exec bash "$HOME/R1-Y/tools/r1y-termux.sh" "$@"
+SHORT_EOF
+    chmod +x "$PREFIX/bin/r1y" && SHORT_OK=1
+fi
+# thêm alias cho chắc (một số máy chặn ghi $PREFIX/bin)
+if [ -f "$HOME_DIR/.bashrc" ]; then
+    grep -q "alias r1y=" "$HOME_DIR/.bashrc" 2>/dev/null ||         printf '\nalias r1y="bash $HOME/r1-y.sh"\n' >> "$HOME_DIR/.bashrc"
+else
+    printf 'alias r1y="bash $HOME/r1-y.sh"\n' > "$HOME_DIR/.bashrc"
+fi
+[ "$SHORT_OK" = "1" ] && ok "Đã tạo lệnh ngắn: r1y" || ok "Đã thêm alias: r1y (mở lại Termux để dùng)"
+
 # ---- 4. phím tắt trên thanh phím Termux (chạm là chạy) ----
+# Phím trên thanh phím Termux CHỈ GÕ CHỮ được (Termux không cho chạy lệnh),
+# nên phím này gõ sẵn "r1y" — chạm phím rồi bấm Enter là xong.
 mkdir -p "$HOME_DIR/.termux"
-if [ -f "$HOME_DIR/.termux/termux.properties" ]; then
-    if grep -q "R1-Y" "$HOME_DIR/.termux/termux.properties" 2>/dev/null; then
-        ok "Phím tắt R1-Y đã có"
+PROPS="$HOME_DIR/.termux/termux.properties"
+KEYLINE='extra-keys = [["r1y","UP","CTRL","ALT","LEFT","DOWN","RIGHT"]]'
+if [ -f "$PROPS" ]; then
+    if grep -qE '^extra-keys' "$PROPS" 2>/dev/null; then
+        # đã có extra-keys: chỉ thay nếu chưa có "r1y"
+        if ! grep -q '"r1y"' "$PROPS" 2>/dev/null; then
+            cp "$PROPS" "$PROPS.bak-r1y" 2>/dev/null || true
+            # nếu đã có extra-keys → chèn "r1y" vào đầu danh sách, GIỮ các phím cũ
+            if grep -q '"R1-Y"' "$PROPS" 2>/dev/null; then
+                sed -i 's/"R1-Y"/"r1y"/g' "$PROPS"
+            else
+                sed -i 's/^extra-keys *= *\[\[ */extra-keys = [["r1y",/' "$PROPS"
+            fi
+            ok "Đã thêm phím r1y vào thanh phím Termux (sao lưu: termux.properties.bak-r1y)"
+        else
+            ok "Phím r1y đã có trên thanh phím Termux"
+        fi
     else
-        {
-            printf '\n# R1-Y: chạm để mở tool cài firmware\n'
-            printf 'extra-keys = [["R1-Y","UP","CTRL","ALT","LEFT","DOWN","RIGHT"]]\n'
-        } >> "$HOME_DIR/.termux/termux.properties"
-        ok "Đã thêm phím R1-Y vào thanh phím Termux"
+        printf '\n%s\n' "$KEYLINE" >> "$PROPS"
+        ok "Đã thêm phím r1y vào thanh phím Termux"
     fi
 else
-    printf 'extra-keys = [["R1-Y","UP","CTRL","ALT","LEFT","DOWN","RIGHT"]]\n' > "$HOME_DIR/.termux/termux.properties"
-    ok "Đã tạo phím R1-Y trên thanh phím Termux"
+    printf '%s\n' "$KEYLINE" > "$PROPS"
+    ok "Đã tạo phím r1y trên thanh phím Termux"
+fi
+# bỏ phím "R1-Y" cũ (nếu bản trước đã thêm) — nó chỉ gõ chữ, gây nhầm
+if [ -f "$PROPS" ] && grep -q '"R1-Y"' "$PROPS" 2>/dev/null; then
+    sed -i 's/"R1-Y"/"r1y"/g' "$PROPS" 2>/dev/null || true
+    ok "Đã sửa phím cũ R1-Y thành r1y"
+fi
+# luôn kiểm tra lại: file phải có dòng extra-keys chứa "r1y"
+if [ -f "$PROPS" ] && ! grep -q '"r1y"' "$PROPS" 2>/dev/null; then
+    printf '\n%s\n' "$KEYLINE" >> "$PROPS"
+    ok "Đã thêm phím r1y (bổ sung)"
 fi
 
 # ---- 5. lối tắt ngoài màn hình chính (Termux:Widget) ----
@@ -119,12 +159,14 @@ ok "Đã tạo lối tắt ngoài màn hình chính (cần app Termux:Widget)"
 
 # ---- 6. hướng dẫn ----
 printf "\n${G}  ════════ XONG! Dùng thế này ════════${N}\n\n"
-printf "  ${BOLD}Cách 1 — nhanh nhất (1 chạm)${N}\n"
-printf "     Mở Termux → chạm phím ${BOLD}R1-Y${N} trên thanh phím ở dưới.\n"
-printf "     ${D}(lần đầu vào Termux, bấm phím Menu/ba chấm → Restart nếu chưa thấy)${N}\n\n"
-printf "  ${BOLD}Cách 2 — từ màn hình chính${N}\n"
+printf "  ${BOLD}Cách 1 — nhanh nhất (2 chạm)${N}\n"
+printf "     Mở Termux → chạm phím ${BOLD}r1y${N} trên thanh phím → bấm ${BOLD}Enter${N}.\n"
+printf "     ${D}(chưa thấy phím: bấm Menu/ba chấm → Restart)${N}\n\n"
+printf "  ${BOLD}Cách 2 — từ màn hình chính (1 chạm thật sự)${N}\n"
 printf "     Cài app ${BOLD}Termux:Widget${N} (F-Droid) → giữ màn hình chính → Tiện ích → Termux\n"
-printf "     → chọn ${BOLD}R1-Y${N}. Chạm là chạy.\n\n"
-printf "  ${BOLD}Cách 3 — gõ tay${N}\n"
-printf "     %sbash ~/r1-y.sh%s\n\n" "$C" "$N"
-printf "  ${D}Bỏ qua được bước gõ lệnh — không cần nhớ gì cả.${N}\n\n"
+printf "     → chọn ${BOLD}R1-Y${N}. Chạm là chạy luôn.\n\n"
+printf "  ${BOLD}Cách 3 — gõ tay (ngắn gọn)${N}\n"
+printf "     ${C}r1y${N}        ${D}(hoặc: bash ~/r1-y.sh)${N}\n\n"
+printf "  ${Y}Lưu ý${N}: phím trên thanh phím Termux chỉ ${BOLD}gõ chữ${N} được, Termux không cho\n"
+printf "  gắn lệnh vào phím. Nên chạm phím ${BOLD}r1y${N} rồi Enter — hoặc dùng Termux:Widget\n"
+printf "  để chạm 1 lần.\n\n"
