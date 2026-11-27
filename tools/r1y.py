@@ -327,11 +327,29 @@ def download_platform_tools():
 
 
 def adb(*args, **kw):
-    return run([find_adb()] + list(args), **kw)
+    """Gọi adb. Luôn đặt thời gian chờ để không bị treo trên điện thoại."""
+    kw.setdefault("timeout", 60)
+    kw.pop("allow_fail", None)
+    exe = find_adb()
+    if not exe:
+        raise RuntimeError("Chưa có adb — chạy: bash tools/termux_setup.sh")
+    return run([exe] + list(args), **kw)
 
 
 def adb_out(*args, **kw):
+    """Chạy adb, trả về stdout. Không nuốt lỗi — ném RuntimeError kèm thông báo thật."""
     rc, out = adb(*args, **kw)
+    if rc != 0 and not kw.get("allow_fail"):
+        low = out.lower()
+        if "unauthorized" in low:
+            raise RuntimeError("Loa chưa cho phép máy này — bấm Cho phép trên màn hình loa")
+        if "no devices" in low or "device not found" in low:
+            raise RuntimeError("Chưa kết nối được loa qua ADB WiFi")
+        if "offline" in low:
+            raise RuntimeError("Loa đang offline — tắt/bật lại Gỡ lỗi ADB trên loa")
+        if "more than one device" in low:
+            raise RuntimeError("Có nhiều thiết bị ADB — chỉ bật 1 loa rồi chạy lại")
+        raise RuntimeError(out.strip() or ("adb lỗi: " + " ".join(args)))
     return out
 
 
@@ -443,14 +461,36 @@ def scan_lan_for_adb(port=ADB_PORT, timeout=0.25, max_workers=64):
 
 
 # ----------------------------------------------------------------- chọn loa
-def list_devices():
-    out = adb_out("devices")
-    devs = []
+def devices_raw():
+    """Trả về list (serial, trạng thái) từ `adb devices` — gồm cả unauthorized/offline."""
+    out = adb_out("devices", allow_fail=True)
+    rows = []
     for line in out.splitlines()[1:]:
         parts = line.split()
-        if len(parts) >= 2 and parts[1] == "device":
-            devs.append(parts[0])
-    return devs
+        if len(parts) >= 2:
+            rows.append((parts[0], parts[1]))
+    return rows
+
+
+def list_devices():
+    return [serial for serial, state in devices_raw() if state == "device"]
+
+
+def explain_device_states(rows):
+    """Dịch trạng thái adb sang việc người dùng cần làm."""
+    hints = []
+    for serial, state in rows:
+        if state == "unauthorized":
+            hints.append("%s: chưa cho phép → bấm “Cho phép” trên màn hình loa" % serial)
+        elif state == "offline":
+            hints.append("%s: offline → tắt/bật lại Gỡ lỗi ADB trên loa" % serial)
+        elif state == "connecting":
+            hints.append("%s: đang kết nối → chờ thêm vài giây" % serial)
+        elif state == "device":
+            hints.append("%s: sẵn sàng" % serial)
+        else:
+            hints.append("%s: %s" % (serial, state))
+    return hints
 
 
 def connect_device(ip=None, interactive=True):
@@ -461,13 +501,29 @@ def connect_device(ip=None, interactive=True):
     if ip:
         ip = re.sub(r":\d+$", "", ip)
         info("Kết nối ADB WiFi tới %s…" % ip)
+        adb("start-server", quiet=True, allow_fail=True)
         rc, out = adb("connect", "%s:%d" % (ip, ADB_PORT), timeout=30)
-        if "connected" in out.lower() or "already" in out.lower():
+        txt = out.strip()
+        low = txt.lower()
+        if "failed to authenticate" in low or "authentication" in low:
+            warn("Loa chưa cho phép máy này (authentication failed).")
+            print("  → Nhìn màn hình loa: bấm %sCho phép%s (tick “luôn cho phép”)." % (C.BOLD, C.RESET))
+            print("  → Không thấy hộp thoại? Cắm cáp USB một lần rồi chạy lại.")
+        elif "refused" in low or "cannot connect" in low or "unable" in low:
+            warn("Loa không mở cổng 5555: %s" % (txt or "không rõ"))
+            print("  • Loa phải %sbật Gỡ lỗi ADB%s (Tùy chọn nhà phát triển)" % (C.BOLD, C.RESET))
+            print("  • Sau khi bật ADB, loa thường cần %skhởi động lại 1 lần%s" % (C.BOLD, C.RESET))
+        elif "connected" in low or "already" in low:
             ok("Đã kết nối %s" % ip)
         else:
-            warn("Không kết nối được: %s" % out.strip())
+            warn("adb trả lời: %s" % (txt or "(không có gì)"))
 
-    devs = list_devices()
+    rows = devices_raw()
+    devs = [d for d, st in rows if st == "device"]
+    if not devs and rows:
+        warn("Có kết nối TCP nhưng chưa dùng được:")
+        for h in explain_device_states(rows):
+            print("  • %s" % h)
     if devs:
         ok("Thấy %d thiết bị: %s" % (len(devs), ", ".join(devs)))
         # Ưu tiên serial dạng ip:5555
@@ -475,7 +531,19 @@ def connect_device(ip=None, interactive=True):
         return serial, (serial.split(":")[0] if ":" in serial else None)
 
     if not interactive:
-        die("Chưa thấy loa nào kết nối ADB. Dùng --ip <IP_LOA>.")
+        rows = devices_raw()
+        msg = ["Chưa kết nối được loa qua ADB."]
+        if ip:
+            msg.append("  • Đã thử %s:%d nhưng chưa dùng được" % (ip, ADB_PORT))
+        for h in explain_device_states(rows):
+            msg.append("  • %s" % h)
+        if not rows:
+            msg += ["  • Loa chưa bật Gỡ lỗi ADB, hoặc chưa cho phép máy này",
+                    "  • Bật ADB rồi khởi động lại loa, sau đó chạy lại",
+                    "  • Kiểm tra điện thoại và loa cùng 1 WiFi"]
+        if ip:
+            msg.append("  • Không cần adb: python3 tools/r1y.py webinstall --ip %s" % ip)
+        die("\n".join(msg))
 
     print()
     warn("Chưa thấy loa nào.")
@@ -503,13 +571,49 @@ def connect_device(ip=None, interactive=True):
     if not manual:
         die("Không có loa. Hãy bật ADB WiFi rồi chạy lại tool.")
     manual = re.sub(r":\d+$", "", manual)
-    adb("connect", "%s:%d" % (manual, ADB_PORT), timeout=30)
-    devs = list_devices()
+    devs = []
+    for attempt in range(1, 4):
+        rc, out = adb("connect", "%s:%d" % (manual, ADB_PORT), timeout=30)
+        time.sleep(1)
+        rows = devices_raw()
+        devs = [d for d, st in rows if st == "device"]
+        if devs:
+            break
+        if rows:
+            warn("Lần %d/%d: %s" % (attempt, 3, ", ".join(explain_device_states(rows))))
+            if any(st == "unauthorized" for _, st in rows):
+                print("  → Giờ hãy nhìn màn hình loa và bấm %sCho phép%s, tool sẽ thử lại."
+                      % (C.BOLD, C.RESET))
+                for _ in range(30):
+                    time.sleep(2)
+                    rows = devices_raw()
+                    devs = [d for d, st in rows if st == "device"]
+                    if devs:
+                        break
+                if devs:
+                    break
+        elif attempt < 3:
+            time.sleep(2)
     if not devs:
-        die("Vẫn chưa kết nối được %s.\n"
-            "  • Thử cắm cáp USB một lần rồi chạy lại\n"
-            "  • Kiểm tra loa có bật Gỡ lỗi ADB không\n"
-            "  • Thử: adb connect %s:%d" % (manual, manual, ADB_PORT))
+        detail = out.strip()
+        print()
+        rows = devices_raw()
+        if rows:
+            for h in explain_device_states(rows):
+                print("  • %s" % h)
+        warn("Chưa kết nối được %s:%d" % (manual, ADB_PORT))
+        if detail:
+            print("  adb trả lời: %s%s%s" % (C.DIM, detail, C.RESET))
+        low = detail.lower()
+        if "authenticate" in low or "unauthorized" in low:
+            print("  → Trên loa có hộp thoại %s“Cho phép gỡ lỗi USB”%s — bấm Cho phép." % (C.BOLD, C.RESET))
+        elif "refused" in low or "unable" in low or rc != 0:
+            print("  → Cổng 5555 chưa mở: bật %sGỡ lỗi ADB%s trên loa, rồi %skhởi động lại loa%s." % (C.BOLD, C.RESET, C.BOLD, C.RESET))
+        print("  • Kiểm tra điện thoại và loa cùng 1 WiFi (thử mở %shttp://%s:8088%s)" % (C.BOLD, manual, C.RESET))
+        print("  • Thử tay: adb connect %s:%d" % (manual, ADB_PORT))
+        print("  • Không dùng được adb? Vẫn cài được bằng: %spython3 tools/r1y.py webinstall --ip %s%s"
+              % (C.BOLD, manual, C.RESET))
+        die("Dừng ở bước kết nối ADB.")
     return devs[0], manual
 
 
@@ -637,7 +741,12 @@ def get_apk(source="github", apk_path=None, include_prerelease=False):
     except Exception as e:
         die("Không gọi được GitHub API: %s\n  → Kiểm tra mạng/Internet." % e)
     if not rel:
-        die("Không có bản phát hành nào kèm file .apk trong %s." % REPO)
+        die("Repo %s chưa có bản phát hành (Release) nào kèm file .apk.\n"
+            "  → Cần tạo Release có APK trước (CI sẽ tự tạo khi gắn tag như v1.6.0).\n"
+            "  → Hoặc cài bằng file APK có sẵn trong máy:\n"
+            "      python3 tools/r1y.py install --ip <IP_LOA> --apk /sdcard/Download/app-release.apk\n"
+            "  → Hoặc nhờ loa tự tải+cài (không cần file):\n"
+            "      python3 tools/r1y.py webinstall --ip <IP_LOA>" % REPO)
 
     ok("Bản mới nhất: v%s%s" % (rel["tag"], " (thử nghiệm)" if rel["prerelease"] else ""))
     if rel["apk_size"]:

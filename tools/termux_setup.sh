@@ -10,6 +10,10 @@
 # ==========================================================
 set -u
 
+# Termux không có /tmp — dùng thư mục tạm của Termux
+LOGF="${TMPDIR:-${PREFIX:-/tmp}/tmp}/r1y-pkg.log"
+mkdir -p "$(dirname "$LOGF")" 2>/dev/null || LOGF="/dev/null"
+
 G='\033[92m'; Y='\033[93m'; R='\033[91m'; B='\033[94m'; N='\033[0m'; D='\033[2m'
 
 ok()   { printf "  ${G}✔${N} %s\n" "$1"; }
@@ -33,14 +37,14 @@ fi
 # ---------------------------------------------------------------- pkg
 install_pkg() {
     # $1 = tên gói, $2 = lệnh kiểm tra (mặc định = tên gói)
-    local pkg="$1"; local check="${2:-$1}"
+    local pkg="$1"; local check="${2:-$1}"; local mode="${3:-}"
     if command -v "$check" >/dev/null 2>&1; then
         ok "$pkg đã có"
         return 0
     fi
     info "Đang cài $pkg…"
     # -y: không hỏi; ẩn phần lớn log, chỉ hiện khi lỗi
-    if pkg install -y "$pkg" >/tmp/r1y-pkg.log 2>&1; then
+    if pkg install -y "$pkg" >"$LOGF" 2>&1; then
         if command -v "$check" >/dev/null 2>&1; then
             ok "$pkg đã cài"
             return 0
@@ -48,12 +52,16 @@ install_pkg() {
     fi
     # thử cập nhật danh sách gói rồi cài lại 1 lần
     pkg update -y >/dev/null 2>&1 || true
-    if pkg install -y "$pkg" >/tmp/r1y-pkg.log 2>&1 && command -v "$check" >/dev/null 2>&1; then
+    if pkg install -y "$pkg" >"$LOGF" 2>&1 && command -v "$check" >/dev/null 2>&1; then
         ok "$pkg đã cài (sau khi cập nhật danh sách)"
         return 0
     fi
+    # gói phụ (openssl, curl...) không có cũng không sao — im lặng cho gọn
+    if [ "$mode" = "optional" ]; then
+        return 1
+    fi
     warn "Không cài được $pkg — sẽ thử cách khác."
-    tail -3 /tmp/r1y-pkg.log 2>/dev/null | sed 's/^/      /'
+    tail -3 "$LOGF" 2>/dev/null | sed 's/^/      /'
     return 1
 }
 
@@ -75,7 +83,8 @@ fi
 
 # tiện ích mạng (không bắt buộc)
 for p in curl openssl-tool; do
-    command -v "${p%%-*}" >/dev/null 2>&1 || install_pkg "$p" || true
+    command -v "${p%%-*}" >/dev/null 2>&1 && continue
+    install_pkg "$p" "" optional || true   # thiếu cũng không sao
 done
 
 # ---------------------------------------------------------------- quyền lưu trữ
