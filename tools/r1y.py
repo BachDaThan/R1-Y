@@ -1442,6 +1442,95 @@ def show_status(ip, serial=None):
 
 
 # ----------------------------------------------------------------- luồng chính
+LAN_HOTSPOT_PREFIX = "192.168.43."     # dải IP của WiFi do loa phát
+
+
+def local_ips():
+    """IP của máy này (không cần thư viện ngoài)."""
+    out = set()
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))          # không gửi gói tin nào
+        out.add(s.getsockname()[0])
+        s.close()
+    except Exception:
+        pass
+    return out
+
+
+def on_device_hotspot():
+    """Máy đang nối WiFi do loa phát? (IP dạng 192.168.43.x)"""
+    return any(ip.startswith(LAN_HOTSPOT_PREFIX) for ip in local_ips())
+
+
+def has_internet(timeout=4):
+    """Có internet thật không (WiFi của loa thì không)."""
+    for url in ("https://api.github.com", "https://www.google.com"):
+        try:
+            urllib.request.urlopen(url, timeout=timeout).read(1)
+            return True
+        except Exception:
+            continue
+    return False
+
+
+TOOL_URL = "https://raw.githubusercontent.com/%s/main/tools/r1y.py" % REPO
+TOOL_VERSION = "1.7.3"
+
+
+def tool_is_outdated():
+    """Bản tool đang chạy cũ hơn bản trên repo?"""
+    try:
+        req = urllib.request.Request(
+            "https://api.github.com/repos/%s/commits?path=tools/r1y.py&per_page=1" % REPO,
+            headers={"User-Agent": "R1Y-tool"})
+        data = json.loads(urllib.request.urlopen(req, timeout=8).read().decode("utf-8"))
+        remote_unix = data[0]["commit"]["committer"]["date"]
+        remote = time.mktime(time.strptime(remote_unix, "%Y-%m-%dT%H:%M:%SZ"))
+        local = os.path.getmtime(os.path.abspath(__file__))
+        return remote > local + 60        # cho lệch múi giờ/đồng hồ
+    except Exception:
+        return False
+
+
+def tool_self_update(silent_if_same=True):
+    """
+    Tải bản tools/r1y.py mới nhất trong repo về đè lên file đang chạy.
+    Cần vì bản cũ không sửa được lỗi chữ ký (v1.7.1) — chính nó là thứ cản
+    việc cài bản mới.
+    """
+    if not has_internet():
+        if not silent_if_same:
+            warn("Không có internet — không tự cập nhật được tool.")
+        return False
+    try:
+        req = urllib.request.Request(TOOL_URL, headers={"Cache-Control": "no-cache"})
+        data = urllib.request.urlopen(req, timeout=30).read()
+        if len(data) < 50 * 1024 or b"def main()" not in data:
+            warn("Bản tool tải về không hợp lệ — giữ nguyên bản đang chạy.")
+            return False
+        cur = os.path.abspath(__file__)
+        stamp = time.strftime("%Y%m%d-%H%M%S")
+        try:
+            shutil.copy2(cur, cur + ".bak-" + stamp)
+        except Exception:
+            pass
+        tmp = cur + ".new"
+        with open(tmp, "wb") as f:
+            f.write(data)
+        # kiểm tra cú pháp trước khi ghi đè
+        import py_compile
+        py_compile.compile(tmp, doraise=True)
+        shutil.move(tmp, cur)
+        ok("Đã cập nhật tool lên bản mới (bản cũ lưu ở %s.bak-%s)."
+           % (os.path.basename(cur), stamp))
+        info("Chạy lại: python3 tools/r1y.py  để dùng bản mới.")
+        return True
+    except Exception as e:
+        warn("Không tự cập nhật được tool: %s" % e)
+        return False
+
+
 def firmware_cache_dir():
     """Thư mục giữ APK đã tải (dùng lại được khi không có internet)."""
     base = os.environ.get("HOME") or os.path.expanduser("~")
@@ -1498,6 +1587,15 @@ def preload_apk(args, quiet=False):
     if getattr(args, "source", "github") == "local":
         return None
 
+    # Tool cũ không sửa được lỗi nó đang gặp (vd v1.7.0 không gỡ được bản khác
+    # chữ ký) → khi có internet, tự lấy bản mới nhất rồi bảo chạy lại.
+    if has_internet() and tool_is_outdated():
+        if not quiet:
+            title("Cập nhật tool")
+            warn("Tool đang chạy là bản cũ so với repo — tự cập nhật trước khi cài.")
+        if tool_self_update(silent_if_same=True):
+            raise SystemExit(1)
+
     # đã tải sẵn trong phiên này? -> dùng lại
     cached = getattr(args, "_apk_cache", None)
     if cached and os.path.isfile(cached):
@@ -1508,6 +1606,31 @@ def preload_apk(args, quiet=False):
     if not quiet:
         title("Bước 1/2 — Tải firmware về điện thoại trước")
         info("Cần internet ở bước này (WiFi nhà / 4G).")
+
+    # Đang nối WiFi do loa phát (192.168.43.x) = KHÔNG có internet:
+    # đừng cố tải rồi báo lỗi khó hiểu — dùng bản đã tải sẵn trong máy.
+    if on_device_hotspot():
+        cached = cached_firmware()
+        if cached:
+            print()
+            warn("Bạn đang nối WiFi của loa (192.168.43.x) — WiFi này KHÔNG có internet.")
+            ok("Dùng bản firmware đã tải trước đó trong máy:")
+            print("     %s (%.1f MB, %s)" % (os.path.basename(cached),
+                  os.path.getsize(cached) / 1048576.0,
+                  time.strftime("%d/%m/%Y %H:%M", time.localtime(os.path.getmtime(cached)))))
+            if confirm("Cài bản này bây giờ?", True):
+                return cached
+            raise SystemExit(1)
+        print()
+        warn("Bạn đang nối WiFi của loa (192.168.43.x) — WiFi này KHÔNG có internet.")
+        print("  Trong máy cũng chưa có bản firmware nào đã tải.")
+        print("  Làm 1 trong 2 cách:")
+        print("    1. Nối điện thoại về WiFi nhà/4G → chạy lại tool → tải xong tool tự")
+        print("       bảo bạn nối vào WiFi của loa để cài (không cần internet lúc cài).")
+        print("    2. Tải sẵn file APK bằng trình duyệt, rồi:")
+        print("       python3 tools/r1y.py install --apk /sdcard/Download/R1Y-v1.7.2-release.apk --ip 192.168.43.1")
+        raise SystemExit(1)
+
     try:
         apk, want_ver, rel = get_apk(args.source, None, getattr(args, "pre", False))
         try:
@@ -1529,6 +1652,21 @@ def preload_apk(args, quiet=False):
     except Exception as e:
         warn("Không tải được firmware: %s" % explain_error(str(e)))
         return None
+
+
+def flow_prefetch():
+    """Tải firmware về máy khi còn internet (không cần loa, không cần adb)."""
+    title("Tải firmware về trước")
+    if on_device_hotspot() and not has_internet():
+        warn("Đang nối WiFi của loa — WiFi này KHÔNG có internet.")
+        info("Nối về WiFi nhà/4G rồi chạy lại mục này.")
+        return
+    apk, want_ver, rel = get_apk("github", None, False)
+    dest = save_to_cache(apk)
+    ok("Đã lưu: %s (%.1f MB)" % (dest or apk, os.path.getsize(apk) / 1048576.0))
+    if want_ver:
+        info("Bản %s — nằm trong %s" % (want_ver[0], firmware_cache_dir()))
+    info("Giờ có thể nối WiFi của loa rồi chọn 1 — tool dùng bản đã tải, không cần mạng.")
 
 
 def explain_no_internet():
@@ -2193,6 +2331,7 @@ def _menu_once():
         ("6", "Cấu hình WiFi nhà cho loa (quét + nối)"),
         ("7", "Bật phát WiFi (hotspot) từ loa để điện thoại kết nối"),
         ("8", "Gỡ cài đặt / khôi phục app gốc"),
+        ("8b", "Tải firmware về trước (làm khi CÒN internet, để cài sau)"),
         ("0", "Bật ADB qua WiFi (khi adb báo offline / cổng 5555 chưa mở)"),
         ("9", "Thoát"),
     ]
@@ -2200,6 +2339,10 @@ def _menu_once():
         print("   %s%-2s%s %s" % (C.CYAN, k, C.RESET, t))
     print()
     choice = ask("Nhập số", "1")
+
+    if choice == "8b":
+        flow_prefetch()
+        return
 
     if choice == "1":
         flow_install(argparse.Namespace(ip=None, apk=None, source="github", resolvers=None,

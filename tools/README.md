@@ -5,6 +5,18 @@ tìm loa trong WiFi → tải firmware từ **GitHub Releases của BachDaThan/R
 → cài → cấp quyền → bật tự khởi động → cấu hình máy chủ YouTube → báo trạng thái.
 Có luôn **tùy chọn cập nhật firmware** và **gỡ/khôi phục**.
 
+## Đang ở WiFi của loa thì KHÔNG có internet
+
+WiFi loa phát (`192.168.43.x`) chỉ để cài đặt, không ra internet. Tool tự nhận ra và:
+- **có** bản firmware đã tải trong `~/.r1y/firmware/` → dùng luôn, không cần mạng;
+- **chưa có** → nói rõ và chỉ cách (nối WiFi nhà/4G tải trước, hoặc `--apk /sdcard/...`).
+
+Menu **8b — Tải firmware về trước**: tải sẵn khi còn internet. Menu **3b — Cập nhật qua web**:
+cài không cần adb (loa ở WiFi nhà).
+
+Nếu bản tool đang chạy cũ hơn bản trên repo, khi có internet tool sẽ **tự cập nhật chính nó**
+rồi bảo chạy lại — vì bản cũ không sửa được lỗi nó đang gặp.
+
 ## Chạy
 
 **Điện thoại Android (Termux)**
