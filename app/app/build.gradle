@@ -52,7 +52,7 @@ dependencies {
     compile 'org.java-websocket:Java-WebSocket:1.5.3'
 
     // HTTP client (resolver/search/update)
-    compile 'com.squareup.okhttp3:okhttp:3.12.13'
+    compile 'com.squareup.okhttp3:okhttp:5.5.1'
 
     // JSON
     compile 'com.google.code.gson:gson:2.8.5'
