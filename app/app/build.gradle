@@ -49,7 +49,7 @@ dependencies {
     compile 'com.android.support:multidex:1.0.1'
 
     // WebSocket (Xiaozhi)
-    compile 'org.java-websocket:Java-WebSocket:1.5.3'
+    compile 'org.java-websocket:Java-WebSocket:1.6.0'
 
     // HTTP client (resolver/search/update)
     compile 'com.squareup.okhttp3:okhttp:3.12.13'
