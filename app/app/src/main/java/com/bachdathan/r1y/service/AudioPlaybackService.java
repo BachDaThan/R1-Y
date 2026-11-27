@@ -171,7 +171,14 @@ public class AudioPlaybackService extends Service implements
      */
     public void playFromUrl(String url) {
         Log.d(TAG, "Playing from URL: " + url);
-        
+
+        // Loa có thể bị vặn âm lượng về 0 (bấm nút trên loa / remote / app gốc).
+        // Khi đó mọi thứ khác đúng vẫn KHÔNG ra tiếng -> tự nâng lên mức nghe được.
+        try {
+            com.bachdathan.r1y.util.AudioDiag.ensureVolume(this);
+        } catch (Throwable ignored) {
+        }
+
         try {
             // Request audio focus
             int result = audioManager.requestAudioFocus(
@@ -271,6 +278,12 @@ public class AudioPlaybackService extends Service implements
     @Override
     public void onPrepared(MediaPlayer mp) {
         isPrepared = true;
+        try {
+            // chắc chắn không ở mức 0 rồi mới start
+            com.bachdathan.r1y.util.AudioDiag.ensureVolume(this);
+            mp.setVolume(1.0f, 1.0f);
+        } catch (Throwable ignored) {
+        }
         mp.start();
         Log.d(TAG, "Playback started");
         

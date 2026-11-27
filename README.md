@@ -108,6 +108,14 @@ python3 tools/r1y.py install --ip 192.168.43.1
 
 Giữ lại cài đặt khi gỡ (nếu ROM cho phép): `pm uninstall -k com.bachdathan.r1y`.
 
+## Loa không ra tiếng / trợ lý không nói?
+
+Mở `http://IP_LOA:8088` → **Nhạc** → **🔊 Kiểm tra loa có ra tiếng không** → bấm
+**Phát thử tiếng bíp**. Bíp kêu = phần cứng/âm lượng ổn, lỗi ở link; bíp im = âm lượng
+bằng 0 hoặc phần cứng. Tab **Trợ lý** có nút **Kiểm tra mic**.
+Chi tiết + cách xử lý từng trường hợp: [docs/LOA_KHONG_RA_TIENG.md](docs/LOA_KHONG_RA_TIENG.md).
+Hoặc trong terminal: `python3 tools/r1y.py audio --ip IP_LOA`.
+
 ## Ghi chú: bộ tài liệu cộng đồng Phicomm R1
 
 Trong nhóm “AI Plus Box” có bộ video + bộ cài All-in-One cho loa R1 (trang cấu hình
