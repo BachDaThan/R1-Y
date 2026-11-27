@@ -339,6 +339,8 @@ public class DeviceActivator {
     // Notification helpers (main thread)
     
     private void notifyVerificationCode(final String code) {
+        ActivationState.code = code == null ? "" : code;
+        ActivationState.error = "";
         if (listener != null) {
             mainHandler.post(new Runnable() {
                 @Override
@@ -350,6 +352,8 @@ public class DeviceActivator {
     }
     
     private void notifyProgress(final int attempt, final int max) {
+        ActivationState.attempt = attempt;
+        ActivationState.max = max;
         if (listener != null) {
             mainHandler.post(new Runnable() {
                 @Override
@@ -361,6 +365,9 @@ public class DeviceActivator {
     }
     
     private void notifySuccess(final String token) {
+        ActivationState.activated = true;
+        ActivationState.code = "";
+        ActivationState.error = "";
         if (listener != null) {
             mainHandler.post(new Runnable() {
                 @Override
@@ -372,6 +379,7 @@ public class DeviceActivator {
     }
     
     private void notifyError(final String error) {
+        ActivationState.error = error == null ? "" : error;
         if (listener != null) {
             mainHandler.post(new Runnable() {
                 @Override

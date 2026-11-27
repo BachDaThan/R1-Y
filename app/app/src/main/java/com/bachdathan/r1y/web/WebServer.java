@@ -126,6 +126,8 @@ public class WebServer extends NanoHTTPD {
                 return handleUpdateInstall();
             } else if ("/api/status".equals(path) || "/status".equals(path)) {
                 return handleStatus();
+            } else if ("/api/assistant".equals(path)) {
+                return handleAssistant("POST".equals(method));
             } else if ("/pairing-code".equals(path)) {
                 return handlePairing();
             }
@@ -665,6 +667,34 @@ public class WebServer extends NanoHTTPD {
         }
     }
 
+    private Response handleAssistant(boolean start) {
+        JSONObject o = new JSONObject();
+        try {
+            boolean act = com.bachdathan.r1y.activation.ActivationState.activated
+                || com.bachdathan.r1y.activation.DeviceFingerprint.getInstance(context).isActivated();
+            if (start && !act) {
+                new Thread(new Runnable() {
+                    @Override public void run() {
+                        try {
+                            new com.bachdathan.r1y.activation.DeviceActivator(context).startActivation();
+                        } catch (Throwable t) {
+                            com.bachdathan.r1y.activation.ActivationState.error = String.valueOf(t.getMessage());
+                        }
+                    }
+                }, "R1Y-Activate").start();
+            }
+            o.put("ok", true);
+            o.put("activated", act);
+            o.put("code", com.bachdathan.r1y.activation.ActivationState.code);
+            o.put("error", com.bachdathan.r1y.activation.ActivationState.error);
+            o.put("attempt", com.bachdathan.r1y.activation.ActivationState.attempt);
+            o.put("max", com.bachdathan.r1y.activation.ActivationState.max);
+        } catch (Exception e) {
+            return json(500, "{\"ok\":false}");
+        }
+        return json(200, o.toString());
+    }
+
     private Response handleStatus() {
         JSONObject o = new JSONObject();
         try {
@@ -724,7 +754,7 @@ public class WebServer extends NanoHTTPD {
         + ".wifi.sel{border-color:#5b5bd6;background:#1b1e2b}.wifi .nm{flex:1}.wifi .lk{font-size:12px;color:#9aa3b2}"
         + "</style></head><body>"
         + "<div class=\"top\"><div class=\"logo\">&#9635;</div>"
-        + "<div><div class=\"name\">R1-Y</div><div class=\"sub\" id=\"sub\">... &middot; v1.6.9</div></div>"
+        + "<div><div class=\"name\">R1-Y</div><div class=\"sub\" id=\"sub\">... &middot; v1.7.0</div></div>"
         + "<div class=\"ready\">&#9679; S&#7841;n s&#224;ng</div></div>"
         + "<div class=\"card\" id=\"card-setup\">"
         + "<h3>&#128225; C&#224;i &#273;&#7863;t WiFi cho loa</h3>"
@@ -760,6 +790,8 @@ public class WebServer extends NanoHTTPD {
         + "<div class=\"msg\" id=\"resMsg\"></div></div>"
         + "<div class=\"card\" id=\"tab-troly\" style=\"display:none\">"
         + "<h3>&#10024; M&#225;y ch&#7911; AI (tr&#7907; l&#253;)</h3>"
+        + "<div class=\"msg\" id=\"actBox\" style=\"font-size:15px;line-height:1.6\">&#272;ang ki&#7875;m tra k&#237;ch ho&#7841;t...</div>"
+        + "<div class=\"row\"><button class=\"btn primary\" onclick=\"startAct()\">L&#7845;y m&#227; k&#237;ch ho&#7841;t</button></div>"
         + "<div class=\"msg\">M&#7863;c &#273;&#7883;nh l&#224; xiaozhi.me. C&#243; th&#7875; &#273;&#7893;i sang m&#225;y ch&#7911; t&#7921; d&#7921;ng ho&#7863;c URL ri&#234;ng.</div>"
         + "<select id=\"aiSel\" onchange=\"onAiChange()\" style=\"width:100%;padding:12px;border-radius:10px;border:1px solid #2a2f3a;background:#0b0d11;color:#e8eaf0\"></select>"
         + "<input id=\"aiUrl\" placeholder=\"wss://...\" style=\"width:100%;margin-top:8px;padding:12px;border-radius:10px;border:1px solid #2a2f3a;background:#0b0d11;color:#e8eaf0;box-sizing:border-box\">"
@@ -799,25 +831,31 @@ public class WebServer extends NanoHTTPD {
         + "document.getElementById('tab-trangthai').style.display=(id==='trangthai')?'block':'none';"
         + "document.getElementById('tab-troly').style.display=(id==='troly')?'block':'none';"
         + "document.getElementById('tab-nha').style.display=(id==='nha')?'block':'none';}"
-        + "async function loadRes(){var r=await fetch('/api/youtube/resolvers');var t=await r.text();document.getElementById('ytJson').value=t;document.getElementById('resMsg').textContent='&#272;&#227; t&#7843;i l&#7841;i';showMode();}"
-        + "async function showMode(){var r=await fetch('/api/settings');var j=await r.json();var n=(j.youtube_resolvers||[]).length;document.getElementById('ytInfo').textContent=n?('&#272;ang d&#249;ng '+n+' m&#225;y ch&#7911; ri&#234;ng c&#7911;a b&#7841;n.'):'&#272;ang d&#249;ng m&#225;y ch&#7911; YouTube c&#244;ng c&#7897;ng (t&#7921; d&#242;).';}"
-        + "async function saveRes(){var v=document.getElementById('ytJson').value;try{JSON.parse(v)}catch(e){document.getElementById('resMsg').textContent='JSON kh&#244;ng h&#7907;p l&#7879;: '+e.message;return;}var r=await fetch('/api/youtube/resolvers',{method:'POST',body:v});var j=await r.json();document.getElementById('resMsg').textContent=j.ok?'&#272;&#227; l&#432;u':'L&#7895;i: '+j.error;showMode();}"
-        + "async function discover(){document.getElementById('resMsg').textContent='&#272;ang d&#242; m&#225;y ch&#7911; c&#244;ng c&#7897;ng (c&#243; th&#7875; m&#7845;t 10-20 gi&#226;y)...';var r=await fetch('/api/youtube/discover',{method:'POST'});var j=await r.json();document.getElementById('resMsg').textContent=j.ok?('T&#236;m th&#7845;y '+j.found+' m&#225;y ch&#7911;: '+(j.servers||[]).join(', ')):('L&#7895;i: '+j.error);}"
-        + "async function checkUpd(){document.getElementById('updMsg').textContent='&#272;ang ki&#7875;m tra...';var r=await fetch('/api/update/check');var j=await r.json();document.getElementById('updInfo').textContent=j.hasUpdate?('C&#243; b&#7843;n '+j.latestTag):('&#272;&#227; m&#7899;i nh&#7845;t ('+j.currentVersion+')');document.getElementById('updMsg').textContent=j.releaseNotes||'';}"
-        + "async function installUpd(){document.getElementById('updMsg').textContent='&#272;ang t&#7843;i + c&#224;i...';var r=await fetch('/api/update/install',{method:'POST'});var j=await r.json();document.getElementById('updMsg').textContent=j.ok?'&#272;&#227; c&#224;i, loa s&#7869; kh&#7903;i &#273;&#7897;ng l&#7841;i':'L&#7895;i: '+j.error;}"
+        + "async function loadRes(){var r=await fetch('/api/youtube/resolvers');var t=await r.text();document.getElementById('ytJson').value=t;document.getElementById('resMsg').textContent='\\u0110\\u00e3 t\\u1ea3i l\\u1ea1i';showMode();}"
+        + "async function showMode(){var r=await fetch('/api/settings');var j=await r.json();var n=(j.youtube_resolvers||[]).length;document.getElementById('ytInfo').textContent=n?('\\u0110ang d\\u00f9ng '+n+' m\\u00e1y ch\\u1ee7 ri\\u00eang c\\u1ee7a b\\u1ea1n.'):'\\u0110ang d\\u00f9ng m\\u00e1y ch\\u1ee7 YouTube c\\u00f4ng c\\u1ed9ng (t\\u1ef1 d\\u00f2).';}"
+        + "async function saveRes(){var v=document.getElementById('ytJson').value;try{JSON.parse(v)}catch(e){document.getElementById('resMsg').textContent='JSON kh\\u00f4ng h\\u1ee3p l\\u1ec7: '+e.message;return;}var r=await fetch('/api/youtube/resolvers',{method:'POST',body:v});var j=await r.json();document.getElementById('resMsg').textContent=j.ok?'\\u0110\\u00e3 l\\u01b0u':'L\\u1ed7i: '+j.error;showMode();}"
+        + "async function discover(){document.getElementById('resMsg').textContent='\\u0110ang d\\u00f2 m\\u00e1y ch\\u1ee7 c\\u00f4ng c\\u1ed9ng (c\\u00f3 th\\u1ec3 m\\u1ea5t 10-20 gi\\u00e2y)...';var r=await fetch('/api/youtube/discover',{method:'POST'});var j=await r.json();document.getElementById('resMsg').textContent=j.ok?('T\\u00ecm th\\u1ea5y '+j.found+' m\\u00e1y ch\\u1ee7: '+(j.servers||[]).join(', ')):('L\\u1ed7i: '+j.error);}"
+        + "async function checkUpd(){document.getElementById('updMsg').textContent='\\u0110ang ki\\u1ec3m tra...';var r=await fetch('/api/update/check');var j=await r.json();document.getElementById('updInfo').textContent=j.hasUpdate?('C\\u00f3 b\\u1ea3n '+j.latestTag):('\\u0110\\u00e3 m\\u1edbi nh\\u1ea5t ('+j.currentVersion+')');document.getElementById('updMsg').textContent=j.releaseNotes||'';}"
+        + "async function installUpd(){document.getElementById('updMsg').textContent='\\u0110ang t\\u1ea3i + c\\u00e0i...';var r=await fetch('/api/update/install',{method:'POST'});var j=await r.json();document.getElementById('updMsg').textContent=j.ok?'\\u0110\\u00e3 c\\u00e0i, loa s\\u1ebd kh\\u1edfi \\u0111\\u1ed9ng l\\u1ea1i':'L\\u1ed7i: '+j.error;}"
         + "async function loadStatus(){var r=await fetch('/api/status');var j=await r.json();"
-        + "document.getElementById('stInfo').textContent=j.app+' v'+j.version+' — c&#7893;ng '+j.port;"
+        + "document.getElementById('stInfo').textContent=j.app+' v'+j.version+' — c\\u1ed5ng '+j.port;"
         + "document.getElementById('sub').textContent='v'+j.version;"
-        + "var u=document.getElementById('stUrl');if(u)u.textContent='&#272;i&#7873;u khi&#7875;n loa t&#7841;i: http://'+location.hostname+':'+j.port;}"
-        + "function connectPhone(){document.getElementById('btMsg').textContent='Bluetooth &#273;&#227; s&#7841;n s&#224;ng cho &#273;i&#7879;n tho&#7841;i k&#7871;t n&#7889;i';}"
-        + "function disconnectBt(){document.getElementById('btMsg').textContent='&#272;&#227; ng&#7845;t Bluetooth';}"
+        + "var u=document.getElementById('stUrl');if(u)u.textContent='\\u0110i\\u1ec1u khi\\u1ec3n loa t\\u1ea1i: http://'+location.hostname+':'+j.port;}"
+        + "function connectPhone(){document.getElementById('btMsg').textContent='Bluetooth \\u0111\\u00e3 s\\u1ea1n s\\u00e0ng cho \\u0111i\\u1ec7n tho\\u1ea1i k\\u1ebft n\\u1ed1i';}"
+        + "function disconnectBt(){document.getElementById('btMsg').textContent='\\u0110\\u00e3 ng\\u1ea5t Bluetooth';}"
         + "async function playNow(){var q=document.getElementById('playQ').value.trim();if(!q){return;}"
-        + "var m=document.getElementById('playMsg');m.textContent='&#272;ang t&#236;m v&#224; ph&#225;t...';"
+        + "var m=document.getElementById('playMsg');m.textContent='\\u0110ang t\\u00ecm v\\u00e0 ph\\u00e1t...';"
         + "try{var r=await fetch('/api/media/play',{method:'POST',body:JSON.stringify({query:q})});var j=await r.json();"
-        + "m.textContent=j.ok?('&#272;ang ph&#225;t: '+(j.title||j.videoId)+' ('+(j.source||'')+')'):('L&#7895;i: '+j.error);}catch(e){m.textContent='L&#7895;i: '+e.message;}}"
+        + "m.textContent=j.ok?('\\u0110ang ph\\u00e1t: '+(j.title||j.videoId)+' ('+(j.source||'')+')'):('L\\u1ed7i: '+j.error);}catch(e){m.textContent='L\\u1ed7i: '+e.message;}}"
         + "async function saveAudioQ(){var v=document.getElementById('audioQ').value;"
         + "var r=await fetch('/api/settings',{method:'POST',body:JSON.stringify({audio_quality:v})});var j=await r.json();"
-        + "alert(j.ok?'&#272;&#227; l&#432;u ch&#7845;t l&#432;&#7907;ng: '+v:('L&#7895;i: '+j.error));}"
+        + "alert(j.ok?'\\u0110\\u00e3 l\\u01b0u ch\\u1ea5t l\\u01b0\\u1ee3ng: '+v:('L\\u1ed7i: '+j.error));}"
+        + "async function loadAct(){try{var r=await fetch('/api/assistant');var j=await r.json();var b=document.getElementById('actBox');"
+        + "if(j.activated){b.textContent='\\u0110\\u00e3 k\\u00edch ho\\u1ea1t xiaozhi.me. Tr\\u1ee3 l\\u00fd s\\u1eb5n s\\u00e0ng.';}"
+        + "else if(j.code){b.innerHTML='M\\u00e3 k\\u00edch ho\\u1ea1t: <b style=\\\"font-size:30px;letter-spacing:5px\\\">'+j.code+'</b><br>V\\u00e0o xiaozhi.me, th\\u00eam thi\\u1ebft b\\u1ecb v\\u00e0 nh\\u1eadp m\\u00e3 n\\u00e0y. Trang t\\u1ef1 c\\u1eadp nh\\u1eadt.';}"
+        + "else{b.textContent=j.error?('Ch\\u01b0a l\\u1ea5y \\u0111\\u01b0\\u1ee3c m\\u00e3: '+j.error):'Ch\\u01b0a c\\u00f3 m\\u00e3. B\\u1ea5m \\\"L\\u1ea5y m\\u00e3 k\\u00edch ho\\u1ea1t\\\".';}}catch(e){}}"
+        + "async function startAct(){var b=document.getElementById('actBox');b.textContent='\\u0110ang l\\u1ea5y m\\u00e3...';try{await fetch('/api/assistant',{method:'POST'});}catch(e){}setTimeout(loadAct,3000);}"
+        + "setInterval(function(){if(document.getElementById('tab-troly').style.display!=='none'){loadAct();}},5000);"
         + "async function loadAi(){var r=await fetch('/api/ai/servers');var j=await r.json();"
         + "var sel=document.getElementById('aiSel');sel.innerHTML='';"
         + "(j.servers||[]).forEach(function(s){var o=document.createElement('option');o.value=s.id;o.textContent=s.name;if(s.id===j.current){o.selected=true;}sel.appendChild(o);});"
@@ -826,43 +864,43 @@ public class WebServer extends NanoHTTPD {
         + "if(id==='xiaozhi'){u.value='wss://xiaozhi.me/v1/ws';}else if(id==='xiaozhi_self'){u.value='ws://192.168.1.100:8000/xiaozhi/v1/';}else{u.value='';u.focus();}}"
         + "async function saveAi(){var id=document.getElementById('aiSel').value;var u=document.getElementById('aiUrl').value;var t=document.getElementById('aiToken').value;"
         + "var r=await fetch('/api/settings',{method:'POST',body:JSON.stringify({ai_server:id,ai_server_url:u,ai_token:t})});var j=await r.json();"
-        + "document.getElementById('aiMsg').textContent=j.ok?'&#272;&#227; l&#432;u m&#225;y ch&#7911; AI. K&#7871;t n&#7889;i l&#7841;i &#273;&#7875; &#225;p d&#7909;ng.':('L&#7895;i: '+j.error);}"
+        + "document.getElementById('aiMsg').textContent=j.ok?'\\u0110\\u00e3 l\\u01b0u m\\u00e1y ch\\u1ee7 AI. K\\u1ebft n\\u1ed1i l\\u1ea1i \\u0111\\u1ec3 \\u00e1p d\\u1ee5ng.':('L\\u1ed7i: '+j.error);}"
         + "async function hotspot(on){var r=await fetch('/api/hotspot',{method:'POST',body:JSON.stringify({on:on,ssid:document.getElementById('hsSsid').value,password:document.getElementById('hsPass').value})});"
         + "var j=await r.json();var m=document.getElementById('hsMsg');"
-        + "m.textContent=(j.ok?('OK: '+j.hint):('Kh&#244;ng b&#7853;t &#273;&#432;&#7907;c. '+j.hint))+(j.warning?(' | '+j.warning):'');}"
+        + "m.textContent=(j.ok?('OK: '+j.hint):('Kh\\u00f4ng b\\u1eadt \\u0111\\u01b0\\u1ee3c. '+j.hint))+(j.warning?(' | '+j.warning):'');}"
         + "async function loadHotspot(){var r=await fetch('/api/hotspot');var j=await r.json();"
         + "document.getElementById('hsSsid').value=j.ssid||'R1-Y';document.getElementById('hsPass').value=j.password||'';"
         + "document.getElementById('hsMsg').textContent=j.hint||'';}"
         + "async function loadAudioQ(){var r=await fetch('/api/settings');var j=await r.json();"
         + "document.getElementById('audioQ').value=j.audio_quality||'high';}"
         + "var pickedSsid='';"
-        + "async function scanWifi(){var m=document.getElementById('wifiMsg');m.textContent='&#272;ang qu&#233;t...';"
+        + "async function scanWifi(){var m=document.getElementById('wifiMsg');m.textContent='\\u0110ang qu\\u00e9t...';"
         + "var r=await fetch('/api/wifi/scan');var j=await r.json();"
         + "var box=document.getElementById('wifiList');box.innerHTML='';"
-        + "if(!j.ok){m.textContent='L&#7895;i: '+j.error;return;}"
+        + "if(!j.ok){m.textContent='L\\u1ed7i: '+j.error;return;}"
         + "(j.networks||[]).forEach(function(n){var d=document.createElement('div');d.className='wifi';"
-        + "d.innerHTML='<span class=\"nm\">'+n.ssid+'</span><span class=\"lk\">'+(n.secured?'&#128274;':'m&#7903;')+(n.saved?' &#10003;':'')+'</span>';"
+        + "d.innerHTML='<span class=\"nm\">'+n.ssid+'</span><span class=\"lk\">'+(n.secured?'\\ud83d\\udd12':'m\\u1edf')+(n.saved?' \\u2713':'')+'</span>';"
         + "d.onclick=function(){pickedSsid=n.ssid;document.querySelectorAll('.wifi').forEach(function(e){e.classList.remove('sel')});d.classList.add('sel');"
-        + "document.getElementById('wifiMsg').textContent='&#272;&#227; ch&#7885;n: '+n.ssid;};box.appendChild(d);});"
-        + "m.textContent='Th&#7845;y '+j.count+' WiFi. Ch&#7885;n WiFi nh&#224; c&#7911;a b&#7841;n.';}"
-        + "async function connectWifi(){if(!pickedSsid){document.getElementById('wifiMsg').textContent='Ch&#432;a ch&#7885;n WiFi';return;}"
-        + "var m=document.getElementById('wifiMsg');m.textContent='&#272;ang k&#7871;t n&#7889;i '+pickedSsid+' (ch&#7901; ~25s)...';"
+        + "document.getElementById('wifiMsg').textContent='\\u0110\\u00e3 ch\\u1ecdn: '+n.ssid;};box.appendChild(d);});"
+        + "m.textContent='Th\\u1ea5y '+j.count+' WiFi. Ch\\u1ecdn WiFi nh\\u00e0 c\\u1ee7a b\\u1ea1n.';}"
+        + "async function connectWifi(){if(!pickedSsid){document.getElementById('wifiMsg').textContent='Ch\\u01b0a ch\\u1ecdn WiFi';return;}"
+        + "var m=document.getElementById('wifiMsg');m.textContent='\\u0110ang k\\u1ebft n\\u1ed1i '+pickedSsid+' (ch\\u1edd ~25s)...';"
         + "var r=await fetch('/api/wifi/connect',{method:'POST',body:JSON.stringify({ssid:pickedSsid,password:document.getElementById('wifiPass').value})});"
-        + "var j=await r.json();m.textContent=j.ok?(j.message+' | '+j.next):('Kh&#244;ng k&#7871;t n&#7889;i &#273;&#432;&#7907;c: '+j.message);"
-        + "if(j.ok){document.getElementById('setupHint').textContent='Loa &#273;&#227; v&#224;o WiFi nh&#224;: '+j.ip;}}"
-        + "async function setupMode(){var m=document.getElementById('wifiMsg');m.textContent='&#272;ang b&#7853;t ch&#7871; &#273;&#7897; c&#224;i &#273;&#7863;t...';"
+        + "var j=await r.json();m.textContent=j.ok?(j.message+' | '+j.next):('Kh\\u00f4ng k\\u1ebft n\\u1ed1i \\u0111\\u01b0\\u1ee3c: '+j.message);"
+        + "if(j.ok){document.getElementById('setupHint').textContent='Loa \\u0111\\u00e3 v\\u00e0o WiFi nh\\u00e0: '+j.ip;}}"
+        + "async function setupMode(){var m=document.getElementById('wifiMsg');m.textContent='\\u0110ang b\\u1eadt ch\\u1ebf \\u0111\\u1ed9 c\\u00e0i \\u0111\\u1eb7t...';"
         + "var r=await fetch('/api/setup',{method:'POST',body:'{\"on\":true}'});var j=await r.json();"
-        + "m.textContent=(j.ok?'OK. ':'Kh&#244;ng b&#7853;t &#273;&#432;&#7907;c. ')+(j.hint||'')+(j.warning?(' | '+j.warning):'');}"
+        + "m.textContent=(j.ok?'OK. ':'Kh\\u00f4ng b\\u1eadt \\u0111\\u01b0\\u1ee3c. ')+(j.hint||'')+(j.warning?(' | '+j.warning):'');}"
         + "async function loadSetup(){try{var r=await fetch('/api/setup');var j=await r.json();"
         + "var w=j.wifi||{};document.getElementById('setupHint').textContent=w.sameNetworkHint||'';"
-        + "if(w.savedSsid){document.getElementById('wifiPass').placeholder='M&#7853;t kh&#7849;u WiFi nh&#224; ('+w.savedSsid+')';}}catch(e){}}"
+        + "if(w.savedSsid){document.getElementById('wifiPass').placeholder='M\\u1eadt kh\\u1ea9u WiFi nh\\u00e0 ('+w.savedSsid+')';}}catch(e){}}"
         + "async function reboot(mode){"
-        + "var t=mode==='device'?'Kh&#7903;i &#273;&#7897;ng l&#7841;i c&#7843; loa (ch&#7901; ~40-60 gi&#226;y, c&#7847;n root)':'Kh&#7903;i &#273;&#7897;ng l&#7841;i app R1-Y (ch&#7901; ~10 gi&#226;y)';"
+        + "var t=mode==='device'?'Kh\\u1edfi \\u0111\\u1ed9ng l\\u1ea1i c\\u1ea3 loa (ch\\u1edd ~40-60 gi\\u00e2y, c\\u1ea7n root)':'Kh\\u1edfi \\u0111\\u1ed9ng l\\u1ea1i app R1-Y (ch\\u1edd ~10 gi\\u00e2y)';"
         + "if(!confirm(t+'?'))return;"
-        + "document.getElementById('btMsg').textContent='&#272;ang kh&#7903;i &#273;&#7897;ng l&#7841;i...';"
+        + "document.getElementById('btMsg').textContent='\\u0110ang kh\\u1edfi \\u0111\\u1ed9ng l\\u1ea1i...';"
         + "try{var r=await fetch('/api/reboot',{method:'POST',body:JSON.stringify({mode:mode,confirm:true})});var j=await r.json();"
         + "document.getElementById('btMsg').textContent=j.message||j.error||'OK';"
-        + "}catch(e){document.getElementById('btMsg').textContent='Loa &#273;ang kh&#7903;i &#273;&#7897;ng l&#7841;i — ch&#7901; r&#7891;i t&#7843;i l&#7841;i trang.';}}"
-        + "loadRes();loadStatus();showMode();loadAi();loadHotspot();loadAudioQ();loadSetup();"
+        + "}catch(e){document.getElementById('btMsg').textContent='Loa \\u0111ang kh\\u1edfi \\u0111\\u1ed9ng l\\u1ea1i — ch\\u1edd r\\u1ed3i t\\u1ea3i l\\u1ea1i trang.';}}"
+        + "loadRes();loadStatus();showMode();loadAi();loadAct();loadHotspot();loadAudioQ();loadSetup();"
         + "</script></body></html>";
 }
