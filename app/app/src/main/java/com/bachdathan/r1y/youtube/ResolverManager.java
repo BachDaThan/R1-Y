@@ -231,8 +231,8 @@ public class ResolverManager {
         if (audio == null || audio.length() == 0) {
             throw new NoMediaException("Piped không có audioStreams (máy chủ bị YouTube chặn?)");
         }
-        List<AudioFallback.Candidate> ladder =
-            AudioFallback.dedupe(AudioFallback.rankPiped(audio, config.getAudioQuality()));
+        List<AudioFallback.Candidate> ladder = AudioFallback.demoteOpusIfUnsupported(
+            AudioFallback.dedupe(AudioFallback.rankPiped(audio, config.getAudioQuality())));
         if (ladder.isEmpty()) {
             throw new NoMediaException("Piped không có luồng audio dùng được");
         }
@@ -260,8 +260,8 @@ public class ResolverManager {
         }
         // Thang chất lượng: Opus cao -> Opus thấp -> AAC cao -> AAC thấp -> codec khác
         // -> cuối cùng là âm thanh lấy từ luồng video (nếu server chỉ trả video).
-        List<AudioFallback.Candidate> ladder = AudioFallback.dedupe(
-            AudioFallback.rankInvidious(formats, config.getAudioQuality()));
+        List<AudioFallback.Candidate> ladder = AudioFallback.demoteOpusIfUnsupported(
+            AudioFallback.dedupe(AudioFallback.rankInvidious(formats, config.getAudioQuality())));
         if (ladder.isEmpty()) {
             throw new NoMediaException("Invidious không có luồng audio/video nào dùng được");
         }

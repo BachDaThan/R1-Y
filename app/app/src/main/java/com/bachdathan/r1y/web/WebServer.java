@@ -126,6 +126,8 @@ public class WebServer extends NanoHTTPD {
                 return handleUpdateInstall();
             } else if ("/api/status".equals(path) || "/status".equals(path)) {
                 return handleStatus();
+            } else if ("/api/player".equals(path)) {
+                return handlePlayer(session, method);
             } else if ("/api/audio/test".equals(path)) {
                 return handleAudioTest(session);
             } else if ("/api/audio/status".equals(path)) {
@@ -672,6 +674,58 @@ public class WebServer extends NanoHTTPD {
     }
 
     /**
+     * Điều khiển phát nhạc: /api/player?action=pause|resume|stop|repeat
+     *                          &on=0|1 (cho repeat)
+     * GET trả trạng thái: đang phát gì, tạm dừng chưa, có lặp không, âm lượng.
+     */
+    private Response handlePlayer(IHTTPSession session, String method) {
+        JSONObject o = new JSONObject();
+        try {
+            String action = param(session, "action");
+            String svc = com.bachdathan.r1y.service.AudioPlaybackService.class.getName();
+            if ("POST".equals(method) && action != null && !action.isEmpty()) {
+                if ("repeat".equals(action)) {
+                    String on = param(session, "on");
+                    boolean want = "1".equals(on) || "true".equalsIgnoreCase(on);
+                    com.bachdathan.r1y.service.AudioPlaybackService.repeatOne = want;
+                    o.put("ok", true);
+                    o.put("repeat", want);
+                    o.put("message", want ? "Đã bật lặp lại bài đang phát."
+                        : "Đã tắt lặp lại.");
+                } else {
+                    android.content.Intent i = new android.content.Intent(context,
+                        com.bachdathan.r1y.service.AudioPlaybackService.class);
+                    if ("pause".equals(action)) {
+                        i.setAction(com.bachdathan.r1y.service.AudioPlaybackService.ACTION_PAUSE);
+                        o.put("message", "Đã tạm dừng.");
+                    } else if ("resume".equals(action)) {
+                        i.setAction(com.bachdathan.r1y.service.AudioPlaybackService.ACTION_RESUME);
+                        o.put("message", "Đang phát tiếp.");
+                    } else if ("stop".equals(action)) {
+                        i.setAction(com.bachdathan.r1y.service.AudioPlaybackService.ACTION_STOP);
+                        o.put("message", "Đã ngưng phát bài này.");
+                    } else {
+                        o.put("ok", false);
+                        o.put("error", "action lạ: " + action);
+                        return json(400, o.toString());
+                    }
+                    context.startService(i);
+                    o.put("ok", true);
+                    o.put("action", action);
+                }
+            }
+            o.put("playing", com.bachdathan.r1y.service.AudioPlaybackService.isPlayingNow());
+            o.put("paused", com.bachdathan.r1y.service.AudioPlaybackService.paused);
+            o.put("repeat", com.bachdathan.r1y.service.AudioPlaybackService.repeatOne);
+            o.put("title", com.bachdathan.r1y.service.AudioPlaybackService.getNowPlayingTitle());
+            o.put("volume", com.bachdathan.r1y.util.AudioDiag.status(context).optInt("volume", -1));
+        } catch (Exception e) {
+            try { o.put("ok", false); o.put("error", String.valueOf(e.getMessage())); } catch (Exception ignored) {}
+        }
+        return json(200, o.toString());
+    }
+
+    /**
      * GET  /api/audio/test            -> trạng thái âm lượng + kết quả lần trước
      * POST /api/audio/test?kind=beep  -> phát bíp tổng hợp (không cần mạng)
      * POST /api/audio/test?kind=url&url=... -> phát thử 1 URL
@@ -805,7 +859,7 @@ public class WebServer extends NanoHTTPD {
         + ".wifi.sel{border-color:#5b5bd6;background:#1b1e2b}.wifi .nm{flex:1}.wifi .lk{font-size:12px;color:#9aa3b2}"
         + "</style></head><body>"
         + "<div class=\"top\"><div class=\"logo\">&#9635;</div>"
-        + "<div><div class=\"name\">R1-Y</div><div class=\"sub\" id=\"sub\">... &middot; v1.7.4</div></div>"
+        + "<div><div class=\"name\">R1-Y</div><div class=\"sub\" id=\"sub\">... &middot; v1.7.5</div></div>"
         + "<div class=\"ready\">&#9679; S&#7841;n s&#224;ng</div></div>"
         + "<div class=\"card\" id=\"card-setup\">"
         + "<h3>&#128225; C&#224;i &#273;&#7863;t WiFi cho loa</h3>"
@@ -827,11 +881,17 @@ public class WebServer extends NanoHTTPD {
         + "<input id=\"playQ\" placeholder=\"D&#225;n link YouTube ho&#7863;c g&#245; t&#234;n b&#224;i...\" style=\"width:100%;padding:12px;border-radius:10px;border:1px solid #2a2f3a;background:#0b0d11;color:#e8eaf0;box-sizing:border-box\">"
         + "<div class=\"row\"><button class=\"btn primary\" onclick=\"playNow()\">&#9654; Ph&#225;t</button></div>"
         + "<div class=\"msg\" id=\"playMsg\"></div>"
+        + "<div class=\"row\"><button class=\"btn danger\" onclick=\"pl('pause')\">&#10074;&#10074; T&#7841;m d&#7915;ng</button>"
+        + "<button class=\"btn primary\" onclick=\"pl('resume')\">&#9654; Ph&#225;t ti&#7871;p</button></div>"
+        + "<div class=\"row\"><button class=\"btn danger\" onclick=\"pl('stop')\">&#10074;&#10074;&#10074; Ng&#432;ng h&#7859;n</button>"
+        + "<button class=\"btn danger\" id=\"repBtn\" onclick=\"plRepeat()\">&#128257; L&#7863;p l&#7841;i: T&#7854;T</button></div>"
+        + "<div class=\"msg\" id=\"nowBox\"></div>"
         + "<h3 style=\"margin-top:18px\">&#128264; Ki&#7875;m tra loa c&#243; ra ti&#7871;ng kh&#244;ng</h3>"
         + "<div class=\"msg\" id=\"sndMsg\">B&#7845;m n&#250;t b&#234;n d&#432;&#7899;i &#273;&#7875; loa ph&#225;t 1 ti&#7871;ng b&#237;p (kh&#244;ng c&#7847;n m&#7841;ng).</div>"
         + "<div class=\"row\"><button class=\"btn primary\" onclick=\"sndBeep()\">&#128266; Ph&#225;t th&#7917; ti&#7871;ng b&#237;p</button>"
         + "<button class=\"btn danger\" onclick=\"sndVol()\">B&#7853;t &#226;m l&#432;&#7907;ng</button></div>"
         + "<div class=\"msg\" id=\"sndInfo\"></div>"
+        + "<div class=\"msg\" id=\"codecInfo\"></div>"
         + "<h3 style=\"margin-top:18px\">&#9881; Ch&#7845;t l&#432;&#7907;ng &#226;m thanh</h3>"
         + "<select id=\"audioQ\" onchange=\"saveAudioQ()\" style=\"width:100%;padding:12px;border-radius:10px;border:1px solid #2a2f3a;background:#0b0d11;color:#e8eaf0\">"
         + "<option value=\"high\">Cao nh&#7845;t (Opus, nghe hay nh&#7845;t)</option>"
@@ -917,6 +977,7 @@ public class WebServer extends NanoHTTPD {
         + "else{b.textContent=j.error?('Ch\\u01b0a l\\u1ea5y \\u0111\\u01b0\\u1ee3c m\\u00e3: '+j.error):'Ch\\u01b0a c\\u00f3 m\\u00e3. B\\u1ea5m \\\"L\\u1ea5y m\\u00e3 k\\u00edch ho\\u1ea1t\\\".';}}catch(e){}}"
         + "async function startAct(){var b=document.getElementById('actBox');b.textContent='\\u0110ang l\\u1ea5y m\\u00e3...';try{await fetch('/api/assistant',{method:'POST'});}catch(e){}setTimeout(loadAct,3000);}"
         + "setInterval(function(){if(document.getElementById('tab-troly').style.display!=='none'){loadAct();}},5000);"
+        + "setInterval(function(){var a=document.getElementById('nowBox');if(a){plState();}},5000);"
         + "async function loadMic(){var m=document.getElementById('micInfo');m.textContent='\u0110ang \u0111\u1ecdc mic...';"
         + "try{var r=await fetch('/api/audio/status');var j=await r.json();"
         + "var t='M\u1ee9c \u00e2m thanh mic: '+(j.micEnergy!=null?j.micEnergy:'?');"
@@ -936,12 +997,26 @@ public class WebServer extends NanoHTTPD {
         + "async function loadHotspot(){var r=await fetch('/api/hotspot');var j=await r.json();"
         + "document.getElementById('hsSsid').value=j.ssid||'R1-Y';document.getElementById('hsPass').value=j.password||'';"
         + "document.getElementById('hsMsg').textContent=j.hint||'';}"
+        + "async function pl(action){var m=document.getElementById('playMsg');"
+        + "try{var r=await fetch('/api/player?action='+action,{method:'POST'});var j=await r.json();"
+        + "m.textContent=j.message||j.error||'';}catch(e){m.textContent='L\u1ed7i: '+e.message;}plState();}"
+        + "async function plRepeat(){try{var cur=document.getElementById('repBtn').textContent;"
+        + "var on=cur.indexOf('T\u1eaeT')>=0?'1':'0';"
+        + "await fetch('/api/player?action=repeat&on='+on,{method:'POST'});plState();}catch(e){}}"
+        + "async function plState(){try{var r=await fetch('/api/player');var j=await r.json();"
+        + "var b=document.getElementById('repBtn');if(b){b.textContent='\ud83d\udd01 L\u1eb7p l\u1ea1i: '+(j.repeat?'B\u1eacT':'T\u1eaeT');}"
+        + "var n=document.getElementById('nowBox');if(n){"
+        + "var t=j.title?('\u0110ang ph\u00e1t: '+j.title):(j.playing?'\u0110ang ph\u00e1t':'');"
+        + "if(j.paused){t='\u0110ANG T\u1ea0M D\u1eeaNG'+(j.title?(' \u2014 '+j.title):'');}"
+        + "var v=(j.volume!=null&&j.volume>=0)?(' | \u00e2m l\u01b0\u1ee3ng '+j.volume):'';"
+        + "n.textContent=t+v;}}catch(e){}}"
         + "async function sndStatus(){try{var r=await fetch('/api/audio/status');var j=await r.json();"
         + "var t='\u00c2m l\u01b0\u1ee3ng: '+(j.volume!=null?j.volume+'/'+j.volumeMax:'?');"
         + "if(j.muted){t+=' \u2014 \u0110ANG B\u1eb0NG 0 (kh\u00f4ng ra ti\u1ebfng)';}"
         + "if(j.wiredHeadset){t+=' | \u0111ang nh\u1eadn tai nghe';}"
         + "if(j.bluetoothA2dp){t+=' | \u0111ang ph\u00e1t qua Bluetooth';}"
-        + "var e=document.getElementById('sndInfo');if(e)e.textContent=t;}catch(e){}}"
+        + "var e=document.getElementById('sndInfo');if(e)e.textContent=t;"
+        + "var c=document.getElementById('codecInfo');if(c){c.textContent=j.opusSupported?'Codec: c\u00f3 Opus (d\u00f9ng \u0111\u01b0\u1ee3c c\u1ea3 Opus l\u1eabn AAC)':'Codec: KH\u00d4NG c\u00f3 Opus/WebM \u2014 app t\u1ef1 \u01b0u ti\u00ean AAC/m4a';}}catch(e){}}"
         + "async function sndBeep(){var m=document.getElementById('sndMsg');m.textContent='\u0110ang ph\u00e1t b\u00edp...';"
         + "try{var r=await fetch('/api/audio/test?kind=beep',{method:'POST'});var j=await r.json();"
         + "m.textContent=j.message||j.error;}catch(e){m.textContent='L\u1ed7i: '+e.message;}sndStatus();}"
@@ -978,6 +1053,6 @@ public class WebServer extends NanoHTTPD {
         + "try{var r=await fetch('/api/reboot',{method:'POST',body:JSON.stringify({mode:mode,confirm:true})});var j=await r.json();"
         + "document.getElementById('btMsg').textContent=j.message||j.error||'OK';"
         + "}catch(e){document.getElementById('btMsg').textContent='Loa \\u0111ang kh\\u1edfi \\u0111\\u1ed9ng l\\u1ea1i — ch\\u1edd r\\u1ed3i t\\u1ea3i l\\u1ea1i trang.';}}"
-        + "loadRes();loadStatus();showMode();loadAi();loadAct();loadHotspot();loadAudioQ();loadSetup();sndStatus();"
+        + "loadRes();loadStatus();showMode();loadAi();loadAct();loadHotspot();loadAudioQ();loadSetup();sndStatus();plState();"
         + "</script></body></html>";
 }

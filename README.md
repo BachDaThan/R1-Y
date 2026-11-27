@@ -108,6 +108,13 @@ python3 tools/r1y.py install --ip 192.168.43.1
 
 Giữ lại cài đặt khi gỡ (nếu ROM cho phép): `pm uninstall -k com.bachdathan.r1y`.
 
+## Nghe nhạc: điều khiển + codec
+
+Tab **Nhạc** (web 8088) có **Tạm dừng / Phát tiếp / Ngưng hẳn / Lặp lại** và dòng
+“Đang phát: … | âm lượng”. Terminal: `python3 tools/r1y.py player --ip IP_LOA`.
+Android 5.1 **không có** bộ giải mã Opus/WebM — từ v1.7.5 app tự kiểm tra codec của loa
+và chọn **AAC/m4a trước** thay vì thử Opus rồi lỗi. Xem `Codec:` trong tab Nhạc.
+
 ## Loa không ra tiếng / trợ lý không nói?
 
 Mở `http://IP_LOA:8088` → **Nhạc** → **🔊 Kiểm tra loa có ra tiếng không** → bấm

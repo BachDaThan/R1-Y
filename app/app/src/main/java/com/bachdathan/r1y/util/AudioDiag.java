@@ -50,6 +50,34 @@ public final class AudioDiag {
                 o.put("advice", "Âm lượng nhạc đang bằng 0 — đây là lý do không có tiếng. "
                     + "Bấm nút 'Bật âm lượng' hoặc dùng remote loa để tăng.");
             }
+            // Codec: loa có bộ giải mã Opus/WebM không (câu hỏi hay gặp: "firmware có
+            // giải mã stream của máy chủ công cộng không?").
+            boolean opus = com.bachdathan.r1y.youtube.AudioFallback.deviceSupportsOpus();
+            o.put("opusSupported", opus);
+            o.put("codecAdvice", opus
+                ? "Loa có bộ giải mã Opus — dùng được cả Opus lẫn AAC."
+                : "Loa KHÔNG có bộ giải mã Opus/WebM (bình thường với Android 5.1). "
+                  + "App đã tự ưu tiên AAC/m4a; nếu máy chủ chỉ trả Opus thì chuyển "
+                  + "'Chất lượng âm thanh' sang Tương thích (AAC/m4a).");
+            if (!opus) {
+                // Danh sách codec âm thanh thực có, để đối chiếu khi cần
+                JSONObject codecs = new JSONObject();
+                try {
+                    int n = android.media.MediaCodecList.getCodecCount();
+                    for (int i = 0; i < n; i++) {
+                        android.media.MediaCodecInfo ci =
+                            android.media.MediaCodecList.getCodecInfoAt(i);
+                        if (ci == null || ci.isEncoder()) continue;
+                        String[] ts = ci.getSupportedTypes();
+                        if (ts == null) continue;
+                        for (String t : ts) {
+                            if (t != null && t.startsWith("audio/")) codecs.put(t, true);
+                        }
+                    }
+                } catch (Throwable ignored) {}
+                o.put("audioCodecs", codecs);
+            }
+
             // Mic: có nghe thấy gì không (chẩn đoán "gọi trợ lý không phản hồi")
             double e = com.bachdathan.r1y.service.VoiceRecognitionService.lastMicEnergy;
             long at = com.bachdathan.r1y.service.VoiceRecognitionService.lastMicAt;

@@ -56,6 +56,23 @@ public class AudioPlaybackService extends Service implements
     private final Set<String> triedSources = new LinkedHashSet<String>();
     private boolean retrying = false;
 
+    /** Lặp lại bài đang phát (như YouTube "lặp 1 bài"). */
+    public static volatile boolean repeatOne = false;
+    /** Đang tạm dừng (người dùng bấm Tạm dừng). */
+    public static volatile boolean paused = false;
+    /** URL + tiêu đề bản đang phát — để phát lại/lặp. */
+    private static volatile String nowPlayingUrl = null;
+    public static volatile String nowPlayingTitle = "";
+    public static volatile String nowPlayingId = "";
+
+    public static boolean isPlayingNow() {
+        return nowPlayingUrl != null;
+    }
+
+    public static String getNowPlayingTitle() {
+        return nowPlayingTitle;
+    }
+
     /** Thang chất lượng hiện tại (Opus -> AAC -> video -> ...) để tự hạ bậc khi lỗi. */
     private final List<AudioFallback.Candidate> ladder = new ArrayList<AudioFallback.Candidate>();
     private int ladderIndex = 0;
@@ -179,6 +196,9 @@ public class AudioPlaybackService extends Service implements
         } catch (Throwable ignored) {
         }
 
+        nowPlayingUrl = url;
+        paused = false;
+
         try {
             // Request audio focus
             int result = audioManager.requestAudioFocus(
@@ -244,11 +264,19 @@ public class AudioPlaybackService extends Service implements
     /**
      * Dừng phát
      */
+    /** Ngưng phát hẳn bài đang phát (khác Tạm dừng: không phát tiếp được nữa). */
     public void stop() {
-        if (mediaPlayer != null && mediaPlayer.isPlaying()) {
-            mediaPlayer.stop();
-            Log.d(TAG, "Playback stopped");
+        try {
+            if (mediaPlayer != null) {
+                if (mediaPlayer.isPlaying()) mediaPlayer.stop();
+                mediaPlayer.reset();
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "stop lỗi: " + e.getMessage());
         }
+        nowPlayingUrl = null;
+        paused = false;
+        Log.d(TAG, "Playback stopped");
         onPlaybackCompleted();
     }
     
@@ -256,9 +284,16 @@ public class AudioPlaybackService extends Service implements
      * Tạm dừng
      */
     public void pause() {
-        if (mediaPlayer != null && mediaPlayer.isPlaying()) {
-            mediaPlayer.pause();
-            Log.d(TAG, "Playback paused");
+        if (mediaPlayer != null && isPrepared) {
+            try {
+                if (mediaPlayer.isPlaying()) {
+                    mediaPlayer.pause();
+                    paused = true;
+                    Log.d(TAG, "Playback paused");
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "pause lỗi: " + e.getMessage());
+            }
         }
     }
     
@@ -267,9 +302,21 @@ public class AudioPlaybackService extends Service implements
      */
     public void resume() {
         if (mediaPlayer != null && isPrepared) {
-            mediaPlayer.start();
-            Log.d(TAG, "Playback resumed");
+            try {
+                mediaPlayer.start();
+                paused = false;
+                Log.d(TAG, "Playback resumed");
+            } catch (Exception e) {
+                Log.w(TAG, "resume lỗi: " + e.getMessage());
+            }
+        } else if (nowPlayingUrl != null) {
+            // đã stop/reset -> phát lại từ đầu bài đang nhớ
+            playFromUrl(nowPlayingUrl);
         }
+    }
+
+    public boolean isPaused() {
+        return paused;
     }
     
     /**
@@ -295,6 +342,12 @@ public class AudioPlaybackService extends Service implements
     @Override
     public void onCompletion(MediaPlayer mp) {
         Log.d(TAG, "Playback completed");
+        if (repeatOne && nowPlayingUrl != null) {
+            Log.i(TAG, "Lặp lại bài đang phát");
+            playFromUrl(nowPlayingUrl);
+            return;
+        }
+        nowPlayingUrl = null;
         onPlaybackCompleted();
     }
     
@@ -350,6 +403,8 @@ public class AudioPlaybackService extends Service implements
                     ResolverManager.Resolved r = rm.resolveNext(vid, triedSources);
                     currentVideoId = vid;
                     currentSource = r.source;
+                    nowPlayingTitle = r.title == null ? "" : r.title;
+                    nowPlayingId = vid;
                     if (r.source != null) triedSources.add(r.source);
                     // Giữ cả thang chất lượng để tự hạ bậc nếu MediaPlayer lỗi
                     ladder.clear();
