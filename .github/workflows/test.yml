@@ -100,7 +100,7 @@ jobs:
       - name: Check tool CLI works
         run: |
           python3 tools/r1y.py --help > /dev/null && echo "OK: r1y.py --help"
-          echo 7 | python3 tools/r1y.py > /dev/null && echo "OK: menu thoát"
+          echo 8 | python3 tools/r1y.py > /dev/null && echo "OK: menu thoát"
 
       - name: Check no secrets in repo
         run: |

@@ -3,7 +3,6 @@ package com.bachdathan.r1y.hardware;
 import android.content.Context;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiManager;
-import android.os.Build;
 import android.util.Log;
 
 import com.bachdathan.r1y.config.R1YConfig;
@@ -56,22 +55,8 @@ public class HotspotManager {
             return false;
         }
 
-        // Android 6+: đã có API chính thức (một số máy vẫn cần quyền hệ thống)
-        if (Build.VERSION.SDK_INT >= 26) {
-            try {
-                Method m = WifiManager.class.getMethod("startLocalOnlyHotspot",
-                    Class.forName("android.net.wifi.WifiManager$LocalOnlyHotspotCallback"),
-                    android.os.Handler.class);
-                Log.i(TAG, "Thiết bị có startLocalOnlyHotspot (API 26+)");
-                // Không gọi trực tiếp vì cần callback; rơi xuống nhánh reflection bên dưới
-                m = null;
-            } catch (Exception ignored) {
-                // tiếp tục
-            }
-        }
-
+        WifiConfiguration conf = buildConfig(ssid, password);
         try {
-            WifiConfiguration conf = buildConfig(ssid, password);
             // Cách 1: setWifiApEnabled (API <= 25, hay dùng trên box Android TV)
             Method setAp = WifiManager.class.getMethod("setWifiApEnabled",
                 WifiConfiguration.class, boolean.class);
