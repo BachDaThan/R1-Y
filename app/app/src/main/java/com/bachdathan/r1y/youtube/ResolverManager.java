@@ -97,6 +97,10 @@ public class ResolverManager {
         public String title;
         public String author;
         public String videoId;
+        /** Thang chất lượng: các URL dự phòng, tốt nhất trước (tự hạ cấp khi lỗi). */
+        public List<AudioFallback.Candidate> ladder = new ArrayList<AudioFallback.Candidate>();
+        /** Bậc đang dùng (1 = tốt nhất). */
+        public int tier = 1;
         /** "piped:url" / "invidious:url" / "custom:url" / "autodiscover:piped:url" / "music:url" */
         public String source;
     }
@@ -227,13 +231,18 @@ public class ResolverManager {
         if (audio == null || audio.length() == 0) {
             throw new Exception("Piped không có audioStreams");
         }
-        JSONObject best = pickPipedAudio(audio, config.getAudioQuality());
-        if (best == null) throw new Exception("Piped audioStreams rỗng");
-        String url = best.optString("url", "");
-        if (url.isEmpty()) throw new Exception("Piped audioStreams không có url");
-        if (url.startsWith("/")) url = base + url;
+        List<AudioFallback.Candidate> ladder =
+            AudioFallback.dedupe(AudioFallback.rankPiped(audio, config.getAudioQuality()));
+        if (ladder.isEmpty()) throw new Exception("Piped không có luồng audio dùng được");
+        // ghép URL tương đối
+        for (AudioFallback.Candidate c : ladder) {
+            if (c.url.startsWith("/")) c.url = base + c.url;
+        }
+        AudioFallback.Candidate best = ladder.get(0);
         Resolved res = new Resolved();
-        res.audioUrl = url;
+        res.ladder = ladder;
+        res.tier = best.tier;
+        res.audioUrl = best.url;
         res.title = j.optString("title", "");
         res.author = j.optString("uploader", "");
         res.videoId = videoId;
@@ -247,45 +256,21 @@ public class ResolverManager {
         if (formats == null || formats.length() == 0) {
             throw new Exception("Invidious không có adaptiveFormats");
         }
-        // quality=high  -> Opus/WebM bitrate cao nhất (nghe hay hơn)
-        // quality=compat-> audio/mp4 (AAC), phù hợp nếu MediaPlayer không đọc Opus
-        String bestUrl = null;
-        String bestType = null;
-        boolean high = "high".equals(config.getAudioQuality());
-        long bestBitrate = -1;
-        String firstMp4 = null, firstMp4Type = null, firstAny = null, firstAnyType = null;
-        for (int i = 0; i < formats.length(); i++) {
-            JSONObject f = formats.optJSONObject(i);
-            if (f == null) continue;
-            String type = f.optString("type", "");
-            String url = f.optString("url", "");
-            if (url.isEmpty() || !type.startsWith("audio/")) continue;
-            long br = parseBitrate(f);
-            if (type.startsWith("audio/mp4") && firstMp4 == null) {
-                firstMp4 = url;
-                firstMp4Type = type;
-            }
-            if (firstAny == null) {
-                firstAny = url;
-                firstAnyType = type;
-            }
-            if (br > bestBitrate) {
-                bestBitrate = br;
-                bestUrl = url;
-                bestType = type;
-            }
+        // Thang chất lượng: Opus cao -> Opus thấp -> AAC cao -> AAC thấp -> codec khác
+        // -> cuối cùng là âm thanh lấy từ luồng video (nếu server chỉ trả video).
+        List<AudioFallback.Candidate> ladder = AudioFallback.dedupe(
+            AudioFallback.rankInvidious(formats, config.getAudioQuality()));
+        if (ladder.isEmpty()) {
+            throw new Exception("Invidious không có luồng audio/video nào dùng được");
         }
-        if (!high) {
-            if (firstMp4 != null) { bestUrl = firstMp4; bestType = firstMp4Type; }
-            else if (bestUrl == null) { bestUrl = firstAny; bestType = firstAnyType; }
-        } else if (bestUrl == null) {
-            bestUrl = firstAny;
-            bestType = firstAnyType;
+        for (AudioFallback.Candidate c : ladder) {
+            if (c.url.startsWith("/")) c.url = base + c.url;
         }
-        if (bestUrl == null) throw new Exception("Invidious không có luồng audio");
-        if (bestUrl.startsWith("/")) bestUrl = base + bestUrl;
+        AudioFallback.Candidate best = ladder.get(0);
         Resolved res = new Resolved();
-        res.audioUrl = bestUrl;
+        res.ladder = ladder;
+        res.tier = best.tier;
+        res.audioUrl = best.url;
         res.title = j.optString("title", "");
         res.author = j.optString("author", "");
         res.videoId = videoId;

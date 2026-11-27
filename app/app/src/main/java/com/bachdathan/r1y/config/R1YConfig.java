@@ -36,6 +36,10 @@ public class R1YConfig {
     private static final String KEY_HOTSPOT_PASS = "hotspot_password";
     private static final String KEY_HOTSPOT_AUTO = "hotspot_auto_start";
     private static final String KEY_AUDIO_QUALITY = "audio_quality";
+    private static final String KEY_SETUP_MODE = "setup_mode";
+    private static final String KEY_HOME_WIFI_SSID = "home_wifi_ssid";
+    private static final String KEY_HOME_WIFI_PASS = "home_wifi_password";
+    private static final String KEY_SETUP_AUTO = "setup_mode_auto";
     private static final String KEY_DISC_PIPED = "discovered_piped";
     private static final String KEY_DISC_INV = "discovered_invidious";
     private static final String KEY_DISC_AT = "discovered_at";
@@ -249,5 +253,44 @@ public class R1YConfig {
     public void setAudioQuality(String q) {
         prefs.edit().putString(KEY_AUDIO_QUALITY,
             "compat".equals(q) ? "compat" : "high").apply();
+    }
+
+    // ================================================== chế độ cài đặt (WiFi setup)
+
+    /**
+     * Đang ở "chế độ cài đặt": loa phát WiFi riêng để điện thoại nối vào
+     * chọn WiFi nhà. Thường bật bằng cách giữ nút tròn trên loa.
+     */
+    public boolean isSetupMode() {
+        return prefs.getBoolean(KEY_SETUP_MODE, false);
+    }
+
+    public void setSetupMode(boolean on) {
+        prefs.edit().putBoolean(KEY_SETUP_MODE, on).apply();
+    }
+
+    /** WiFi nhà đã cấu hình (để hiện lại trong giao diện). */
+    public String getHomeWifiSsid() {
+        return prefs.getString(KEY_HOME_WIFI_SSID, "");
+    }
+
+    public void setHomeWifi(String ssid, String password) {
+        prefs.edit()
+            .putString(KEY_HOME_WIFI_SSID, ssid == null ? "" : ssid)
+            .putString(KEY_HOME_WIFI_PASS, password == null ? "" : password)
+            .apply();
+    }
+
+    public String getHomeWifiPassword() {
+        return prefs.getString(KEY_HOME_WIFI_PASS, "");
+    }
+
+    /** Tự vào chế độ cài đặt khi chưa có WiFi nhà nào được lưu. */
+    public boolean isSetupAutoWhenNoWifi() {
+        return prefs.getBoolean(KEY_SETUP_AUTO, true);
+    }
+
+    public void setSetupAutoWhenNoWifi(boolean on) {
+        prefs.edit().putBoolean(KEY_SETUP_AUTO, on).apply();
     }
 }

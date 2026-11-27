@@ -11,12 +11,15 @@ import android.os.PowerManager;
 import android.util.Log;
 
 import com.bachdathan.r1y.config.R1YConfig;
+import com.bachdathan.r1y.youtube.AudioFallback;
 import com.bachdathan.r1y.youtube.ResolverManager;
 
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -52,6 +55,10 @@ public class AudioPlaybackService extends Service implements
     private String currentSource;
     private final Set<String> triedSources = new LinkedHashSet<String>();
     private boolean retrying = false;
+
+    /** Thang chất lượng hiện tại (Opus -> AAC -> video -> ...) để tự hạ bậc khi lỗi. */
+    private final List<AudioFallback.Candidate> ladder = new ArrayList<AudioFallback.Candidate>();
+    private int ladderIndex = 0;
     
     private PlaybackCallback callback;
     
@@ -93,6 +100,8 @@ public class AudioPlaybackService extends Service implements
                         triedSources.clear();
                         if (currentSource != null) triedSources.add(currentSource);
                         retrying = false;
+                        ladder.clear();
+                        ladderIndex = 0;
                         playFromUrl(audioUrl);
                     }
                     break;
@@ -280,7 +289,17 @@ public class AudioPlaybackService extends Service implements
     public boolean onError(MediaPlayer mp, int what, int extra) {
         Log.e(TAG, "MediaPlayer error: what=" + what + ", extra=" + extra);
 
-        // Tự chuyển sang máy chủ kế tiếp (giống Tube/LiteTube đổi client khi lỗi)
+        // 1) Còn bậc thấp hơn trong cùng máy chủ -> tự hạ chất lượng (Opus -> AAC -> video)
+        if (!retrying && ladderIndex + 1 < ladder.size()) {
+            retrying = true;
+            ladderIndex++;
+            AudioFallback.Candidate c = ladder.get(ladderIndex);
+            Log.w(TAG, "Hạ chất lượng xuống bậc " + (ladderIndex + 1) + ": " + c.label);
+            playFromUrl(c.url);
+            return true;
+        }
+
+        // 2) Hết bậc -> chuyển sang máy chủ kế tiếp
         if (!retrying && currentVideoId != null) {
             retrying = true;
             resolveAndPlayAsync(currentQuery, currentVideoId);
@@ -319,7 +338,13 @@ public class AudioPlaybackService extends Service implements
                     currentVideoId = vid;
                     currentSource = r.source;
                     if (r.source != null) triedSources.add(r.source);
-                    Log.i(TAG, "Phát qua " + r.source + ": " + r.title);
+                    // Giữ cả thang chất lượng để tự hạ bậc nếu MediaPlayer lỗi
+                    ladder.clear();
+                    if (r.ladder != null && !r.ladder.isEmpty()) ladder.addAll(r.ladder);
+                    ladderIndex = 0;
+                    Log.i(TAG, "Phát qua " + r.source + ": " + r.title
+                        + " | bậc " + r.tier + "/" + Math.max(1, ladder.size())
+                        + (ladder.isEmpty() ? "" : " (" + ladder.get(0).label + ")"));
                     retrying = false;
                     playFromUrl(r.audioUrl);
                 } catch (Exception e) {

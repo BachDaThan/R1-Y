@@ -46,13 +46,29 @@ public class BootReceiver extends BroadcastReceiver {
                 Intent httpIntent = new Intent(context, HTTPServerService.class);
                 context.startService(httpIntent);
 
-                // Tự phát WiFi (hotspot) nếu người dùng đã bật
+                // Tự phát WiFi (hotspot) nếu người dùng đã bật,
+                // hoặc tự vào "chế độ cài đặt" khi loa chưa có WiFi nhà nào.
                 try {
                     final Context ctx = context.getApplicationContext();
                     new Thread(new Runnable() {
                         @Override
                         public void run() {
-                            new com.bachdathan.r1y.hardware.HotspotManager(ctx).maybeAutoStart();
+                            com.bachdathan.r1y.config.R1YConfig cfg =
+                                new com.bachdathan.r1y.config.R1YConfig(ctx);
+                            com.bachdathan.r1y.hardware.HotspotManager hs =
+                                new com.bachdathan.r1y.hardware.HotspotManager(ctx);
+                            com.bachdathan.r1y.hardware.WifiProvisioner wp =
+                                new com.bachdathan.r1y.hardware.WifiProvisioner(ctx);
+
+                            boolean noHomeWifi = cfg.getHomeWifiSsid().isEmpty() || !wp.hasInternet();
+                            if (cfg.isSetupAutoWhenNoWifi() && noHomeWifi) {
+                                Log.i(TAG, "Chưa có WiFi nhà -> vào chế độ cài đặt");
+                                cfg.setSetupMode(true);
+                                cfg.setHotspotEnabled(true);
+                                hs.enableFromConfig();
+                            } else {
+                                hs.maybeAutoStart();
+                            }
                         }
                     }, "R1Y-Hotspot").start();
                 } catch (Exception e) {

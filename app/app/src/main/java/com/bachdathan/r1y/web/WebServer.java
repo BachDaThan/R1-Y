@@ -5,6 +5,7 @@ import android.util.Log;
 
 import com.bachdathan.r1y.config.R1YConfig;
 import com.bachdathan.r1y.hardware.HotspotManager;
+import com.bachdathan.r1y.hardware.WifiProvisioner;
 import com.bachdathan.r1y.update.UpdateManager;
 import com.bachdathan.r1y.youtube.ResolverManager;
 import com.bachdathan.r1y.youtube.SearchManager;
@@ -101,6 +102,16 @@ public class WebServer extends NanoHTTPD {
                 return handleAiServers();
             } else if ("/api/hotspot".equals(path)) {
                 return "POST".equals(method) ? handleHotspot(session) : handleHotspotStatus();
+            } else if ("/api/wifi/scan".equals(path)) {
+                return handleWifiScan();
+            } else if ("/api/wifi/connect".equals(path)) {
+                return handleWifiConnect(session);
+            } else if ("/api/wifi/status".equals(path)) {
+                return handleWifiStatus();
+            } else if ("/api/wifi/forget".equals(path)) {
+                return handleWifiForget(session);
+            } else if ("/api/setup".equals(path)) {
+                return "POST".equals(method) ? handleSetup(session) : handleSetupStatus();
             } else if ("/api/settings".equals(path)) {
                 return "POST".equals(method) ? handleSaveSettings(session) : handleGetSettings();
             } else if ("/api/youtube/search".equals(path)) {
@@ -277,6 +288,126 @@ public class WebServer extends NanoHTTPD {
         return json(200, o.toString());
     }
 
+    // ---------------------------------------------------------- cài đặt WiFi
+
+    private WifiProvisioner wifiSetup() {
+        return new WifiProvisioner(context);
+    }
+
+    /** POST /api/wifi/scan -> danh sách WiFi quét được. */
+    private Response handleWifiScan() {
+        JSONObject o = new JSONObject();
+        try {
+            JSONArray list = wifiSetup().scan();
+            o.put("ok", true);
+            o.put("count", list.length());
+            o.put("networks", list);
+            o.put("current", new JSONArray().put(wifiSetup().currentIp()));
+        } catch (Exception e) {
+            try { o.put("ok", false); o.put("error", e.getMessage()); } catch (Exception ignored) {}
+        }
+        return json(200, o.toString());
+    }
+
+    /** POST /api/wifi/connect {"ssid":"...","password":"..."} */
+    private Response handleWifiConnect(IHTTPSession session) {
+        JSONObject o = new JSONObject();
+        try {
+            String body = readBody(session);
+            JSONObject in = (body == null || body.trim().isEmpty()) ? new JSONObject() : new JSONObject(body);
+            String ssid = in.optString("ssid", "");
+            String pass = in.optString("password", "");
+            if (ssid.trim().isEmpty()) {
+                o.put("ok", false);
+                o.put("error", "Thiếu tên WiFi (ssid)");
+                return json(400, o.toString());
+            }
+            WifiProvisioner.ConnectResult r = wifiSetup().connect(ssid, pass);
+            o.put("ok", r.ok);
+            o.put("ssid", r.ssid);
+            o.put("message", r.message);
+            o.put("ip", r.ip);
+            o.put("gateway", r.gateway);
+            o.put("webUrl", r.webUrl);
+            o.put("hotspotWasDisabled", r.hotspotWasDisabled);
+            if (r.ok) {
+                config.setSetupMode(false);
+                o.put("next", "Loa đã vào WiFi nhà. Mở " + r.webUrl
+                    + " hoặc dùng tool cài firmware qua mạng nội bộ.");
+            }
+        } catch (Exception e) {
+            try { o.put("ok", false); o.put("error", e.getMessage()); } catch (Exception ignored) {}
+        }
+        return json(200, o.toString());
+    }
+
+    private Response handleWifiStatus() {
+        return json(200, wifiSetup().status().toString());
+    }
+
+    /** POST /api/wifi/forget {"ssid":"..."} */
+    private Response handleWifiForget(IHTTPSession session) {
+        JSONObject o = new JSONObject();
+        try {
+            String body = readBody(session);
+            JSONObject in = (body == null || body.trim().isEmpty()) ? new JSONObject() : new JSONObject(body);
+            String ssid = in.optString("ssid", config.getHomeWifiSsid());
+            boolean ok = wifiSetup().forget(ssid);
+            o.put("ok", ok);
+            o.put("ssid", ssid);
+        } catch (Exception e) {
+            try { o.put("ok", false); o.put("error", e.getMessage()); } catch (Exception ignored) {}
+        }
+        return json(200, o.toString());
+    }
+
+    private Response handleSetupStatus() {
+        JSONObject o = new JSONObject();
+        try {
+            WifiProvisioner wp = wifiSetup();
+            HotspotManager hs = hotspot();
+            o.put("ok", true);
+            o.put("setupMode", config.isSetupMode());
+            o.put("hotspotOn", hs.isEnabled());
+            o.put("hotspotSsid", config.getHotspotSsid());
+            o.put("hotspotPassword", config.getHotspotPassword());
+            o.put("hotspotUrl", hs.gatewayUrl());
+            o.put("wifi", new JSONObject(wp.status().toString()));
+            o.put("webUrl", wp.bestWebUrl());
+            o.put("hasInternet", wp.hasInternet());
+        } catch (Exception e) {
+            try { o.put("ok", false); o.put("error", e.getMessage()); } catch (Exception ignored) {}
+        }
+        return json(200, o.toString());
+    }
+
+    /** POST /api/setup {"on":true} -> bật/tắt chế độ cài đặt (hotspot + chờ WiFi nhà). */
+    private Response handleSetup(IHTTPSession session) {
+        JSONObject o = new JSONObject();
+        try {
+            String body = readBody(session);
+            JSONObject in = (body == null || body.trim().isEmpty()) ? new JSONObject() : new JSONObject(body);
+            boolean on = in.optBoolean("on", true);
+            config.setSetupMode(on);
+            HotspotManager hs = hotspot();
+            boolean ok = on ? hs.enableFromConfig() : hs.disable();
+            o.put("ok", ok || hs.isEnabled() == on);
+            o.put("setupMode", on);
+            o.put("hotspotOn", hs.isEnabled());
+            o.put("hotspotSsid", config.getHotspotSsid());
+            o.put("hotspotUrl", hs.gatewayUrl());
+            o.put("hint", on
+                ? "Điện thoại nối WiFi \"" + config.getHotspotSsid() + "\" rồi mở " + hs.gatewayUrl()
+                : "Đã tắt chế độ cài đặt");
+            if (on && !ok) {
+                o.put("warning", "ROM có thể cần root để bật hotspot — xem hướng dẫn trong tab Nhà.");
+            }
+        } catch (Exception e) {
+            try { o.put("ok", false); o.put("error", e.getMessage()); } catch (Exception ignored) {}
+        }
+        return json(200, o.toString());
+    }
+
     private Response handleGetSettings() {
         JSONObject o = new JSONObject();
         try {
@@ -293,6 +424,8 @@ public class WebServer extends NanoHTTPD {
             o.put("hotspot_password", config.getHotspotPassword());
             o.put("hotspot_auto_start", config.isHotspotAutoStart());
             o.put("audio_quality", config.getAudioQuality());
+            o.put("setup_mode", config.isSetupMode());
+            o.put("home_wifi_ssid", config.getHomeWifiSsid());
         } catch (Exception ignored) {}
         return json(200, o.toString());
     }
@@ -416,6 +549,19 @@ public class WebServer extends NanoHTTPD {
             o.put("author", r.author);
             o.put("audioUrl", r.audioUrl);
             o.put("source", r.source);
+            o.put("tier", r.tier);
+            JSONArray ladder = new JSONArray();
+            if (r.ladder != null) {
+                for (com.bachdathan.r1y.youtube.AudioFallback.Candidate c : r.ladder) {
+                    JSONObject e = new JSONObject();
+                    e.put("label", c.label);
+                    e.put("tier", c.tier);
+                    e.put("bitrate", c.bitrate);
+                    e.put("mime", c.mime);
+                    ladder.put(e);
+                }
+            }
+            o.put("ladder", ladder);
             return json(200, o.toString());
         } catch (Exception e) {
             return json(500, "{\"ok\":false,\"error\":\"" + e.getMessage() + "\"}");
@@ -507,10 +653,21 @@ public class WebServer extends NanoHTTPD {
         + ".nav button.on{color:#8b8bff}.nav .ic{font-size:20px;display:block}"
         + ".msg{font-size:13px;color:#9aa3b2;min-height:18px}"
         + "h3{margin:0 0 10px;font-size:17px}"
+        + ".wifi{display:flex;align-items:center;gap:10px;padding:12px;border:1px solid #232733;border-radius:10px;margin:6px 0;cursor:pointer}"
+        + ".wifi.sel{border-color:#5b5bd6;background:#1b1e2b}.wifi .nm{flex:1}.wifi .lk{font-size:12px;color:#9aa3b2}"
         + "</style></head><body>"
         + "<div class=\"top\"><div class=\"logo\">&#9635;</div>"
         + "<div><div class=\"name\">R1-Y</div><div class=\"sub\" id=\"sub\">... &middot; v1.5.0</div></div>"
         + "<div class=\"ready\">&#9679; S&#7841;n s&#224;ng</div></div>"
+        + "<div class=\"card\" id=\"card-setup\">"
+        + "<h3>&#128225; C&#224;i &#273;&#7863;t WiFi cho loa</h3>"
+        + "<div class=\"msg\" id=\"setupHint\">Gi&#7919; n&#250;t tr&#242;n tr&#234;n loa &#273;&#7875; loa ph&#225;t WiFi, n&#7889;i v&#224;o r&#7891;i ch&#7885;n WiFi nh&#224; &#7903; &#273;&#226;y.</div>"
+        + "<div class=\"row\"><button class=\"btn primary\" onclick=\"scanWifi()\">&#128269; Qu&#233;t WiFi</button>"
+        + "<button class=\"btn danger\" onclick=\"setupMode()\">B&#7853;t ch&#7871; &#273;&#7897; c&#224;i &#273;&#7863;t</button></div>"
+        + "<div id=\"wifiList\" style=\"margin-top:10px\"></div>"
+        + "<input id=\"wifiPass\" type=\"password\" placeholder=\"M&#7853;t kh&#7849;u WiFi nh&#224;\" style=\"width:100%;margin-top:8px;padding:12px;border-radius:10px;border:1px solid #2a2f3a;background:#0b0d11;color:#e8eaf0;box-sizing:border-box\">"
+        + "<div class=\"row\"><button class=\"btn primary\" onclick=\"connectWifi()\">K&#7871;t n&#7889;i WiFi n&#224;y</button></div>"
+        + "<div class=\"msg\" id=\"wifiMsg\"></div></div>"
         + "<div class=\"card\">"
         + "<button class=\"btn primary\" onclick=\"connectPhone()\">Cho &#273;i&#7879;n tho&#7841;i k&#7871;t n&#7889;i</button>"
         + "<button class=\"btn danger\" onclick=\"disconnectBt()\">Ng&#7845;t Bluetooth</button>"
@@ -605,6 +762,27 @@ public class WebServer extends NanoHTTPD {
         + "document.getElementById('hsMsg').textContent=j.hint||'';}"
         + "async function loadAudioQ(){var r=await fetch('/api/settings');var j=await r.json();"
         + "document.getElementById('audioQ').value=j.audio_quality||'high';}"
-        + "loadRes();loadStatus();showMode();loadAi();loadHotspot();loadAudioQ();"
+        + "var pickedSsid='';"
+        + "async function scanWifi(){var m=document.getElementById('wifiMsg');m.textContent='&#272;ang qu&#233;t...';"
+        + "var r=await fetch('/api/wifi/scan');var j=await r.json();"
+        + "var box=document.getElementById('wifiList');box.innerHTML='';"
+        + "if(!j.ok){m.textContent='L&#7895;i: '+j.error;return;}"
+        + "(j.networks||[]).forEach(function(n){var d=document.createElement('div');d.className='wifi';"
+        + "d.innerHTML='<span class=\"nm\">'+n.ssid+'</span><span class=\"lk\">'+(n.secured?'&#128274;':'m&#7903;')+(n.saved?' &#10003;':'')+'</span>';"
+        + "d.onclick=function(){pickedSsid=n.ssid;document.querySelectorAll('.wifi').forEach(function(e){e.classList.remove('sel')});d.classList.add('sel');"
+        + "document.getElementById('wifiMsg').textContent='&#272;&#227; ch&#7885;n: '+n.ssid;};box.appendChild(d);});"
+        + "m.textContent='Th&#7845;y '+j.count+' WiFi. Ch&#7885;n WiFi nh&#224; c&#7911;a b&#7841;n.';}"
+        + "async function connectWifi(){if(!pickedSsid){document.getElementById('wifiMsg').textContent='Ch&#432;a ch&#7885;n WiFi';return;}"
+        + "var m=document.getElementById('wifiMsg');m.textContent='&#272;ang k&#7871;t n&#7889;i '+pickedSsid+' (ch&#7901; ~25s)...';"
+        + "var r=await fetch('/api/wifi/connect',{method:'POST',body:JSON.stringify({ssid:pickedSsid,password:document.getElementById('wifiPass').value})});"
+        + "var j=await r.json();m.textContent=j.ok?(j.message+' | '+j.next):('Kh&#244;ng k&#7871;t n&#7889;i &#273;&#432;&#7907;c: '+j.message);"
+        + "if(j.ok){document.getElementById('setupHint').textContent='Loa &#273;&#227; v&#224;o WiFi nh&#224;: '+j.ip;}}"
+        + "async function setupMode(){var m=document.getElementById('wifiMsg');m.textContent='&#272;ang b&#7853;t ch&#7871; &#273;&#7897; c&#224;i &#273;&#7863;t...';"
+        + "var r=await fetch('/api/setup',{method:'POST',body:'{\"on\":true}'});var j=await r.json();"
+        + "m.textContent=(j.ok?'OK. ':'Kh&#244;ng b&#7853;t &#273;&#432;&#7907;c. ')+(j.hint||'')+(j.warning?(' | '+j.warning):'');}"
+        + "async function loadSetup(){try{var r=await fetch('/api/setup');var j=await r.json();"
+        + "var w=j.wifi||{};document.getElementById('setupHint').textContent=w.sameNetworkHint||'';"
+        + "if(w.savedSsid){document.getElementById('wifiPass').placeholder='M&#7853;t kh&#7849;u WiFi nh&#224; ('+w.savedSsid+')';}}catch(e){}}"
+        + "loadRes();loadStatus();showMode();loadAi();loadHotspot();loadAudioQ();loadSetup();"
         + "</script></body></html>";
 }
