@@ -30,6 +30,47 @@ import json
 import os
 import platform
 import re
+import sys
+
+
+def _setup_utf8_console():
+    """
+    Windows: console mặc định dùng cp1252/cp437 → in tiếng Việt là crash
+    (UnicodeEncodeError: 'charmap' codec...). Chuyển sang UTF-8 và bật
+    chế độ thay thế ký tự để KHÔNG BAO GIỜ crash vì chữ.
+    """
+    def _safe(stream):
+        """Đổi sang UTF-8 nếu bảng mã hiện tại không in được tiếng Việt."""
+        try:
+            enc = (getattr(stream, "encoding", "") or "").lower()
+            if enc.replace("-", "") in ("utf8", "utf_8"):
+                return
+            if hasattr(stream, "reconfigure"):
+                stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            try:  # Python < 3.7
+                import io
+                stream.flush()
+                if hasattr(sys, "stdout"):
+                    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+            except Exception:
+                pass
+
+    _safe(sys.stdout)
+    _safe(sys.stderr)
+
+    if os.name != "nt":
+        return
+    # đặt code page console sang 65001 (UTF-8)
+    try:
+        import ctypes
+        ctypes.windll.kernel32.SetConsoleOutputCP(65001)
+        ctypes.windll.kernel32.SetConsoleCP(65001)
+    except Exception:
+        pass
+
+
+_setup_utf8_console()
 import shutil
 import socket
 import subprocess
@@ -1490,7 +1531,27 @@ def finish(ip, status_info):
 
 
 def menu():
+    """Menu tương tác — chạy xong 1 việc thì quay lại menu."""
     banner()
+    while True:
+        try:
+            _menu_once()
+        except KeyboardInterrupt:
+            print("\nTạm biệt!")
+            return
+        except SystemExit as e:
+            # lỗi trong flow (die) → quay lại menu; người dùng chọn thoát (code 0) → thoát hẳn
+            if e.code in (0, None):
+                return
+        except Exception as e:
+            warn("Có lỗi: %s" % explain_error(str(e)))
+        print()
+        if not confirm("Quay lại menu chính?", True):
+            print("Tạm biệt!")
+            return
+
+
+def _menu_once():
     print("  %sChọn việc cần làm:%s\n" % (C.BOLD, C.RESET))
     items = [
         ("1", "Cài mới từ đầu (A→Z) — tải APK từ GitHub rồi cài"),
@@ -1535,12 +1596,11 @@ def menu():
         flow_hotspot(argparse.Namespace(ip=None, yes=False, on=None, ssid=None, password=None))
     elif choice == "8":
         flow_uninstall(argparse.Namespace(ip=None, yes=False))
-    elif choice in ("9", "wifi"):
+    elif choice in ("9", "q", "quit", "exit", ""):
         print("Tạm biệt!")
-        return
+        sys.exit(0)
     else:
-        print("Tạm biệt!")
-        return
+        warn("Không có mục '%s' — chọn số trong danh sách." % choice)
 
 
 def main():
@@ -1548,7 +1608,7 @@ def main():
     ap = argparse.ArgumentParser(
         description="Tool cài đặt / cập nhật firmware %s cho loa Phicomm R1." % APP_NAME,
         epilog="Nguồn firmware: github.com/%s" % REPO)
-    ap.add_argument("command", nargs="?", default=None,
+    ap.add_argument("command", nargs="?", default="menu",
                     choices=["install", "update", "status", "config", "uninstall",
                              "hotspot", "wifi", "webinstall", "menu"],
                     help="Việc cần làm (bỏ trống = mở menu)")

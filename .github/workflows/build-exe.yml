@@ -1,0 +1,149 @@
+name: Build Tool EXE
+
+# Đóng gói tools/r1y.py thành MỘT file R1Y-Tool.exe (Windows)
+# - Chạy tay: Actions → Build Tool EXE → Run workflow
+# - Tự chạy khi gắn tag v*  → đính .exe vào Release
+on:
+  push:
+    tags: ['v*']
+    branches: [main]
+    paths:
+      - 'tools/**'
+      - '.github/workflows/build-exe.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tools/**'
+      - '.github/workflows/build-exe.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-exe:
+    name: Build R1Y-Tool.exe
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Cài PyInstaller
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pyinstaller
+
+      - name: Kiểm tra môi trường
+        shell: pwsh
+        run: |
+          python --version
+          python -m PyInstaller --version
+          Get-ChildItem tools | Select-Object Name, Length
+
+      - name: Kiểm tra cú pháp tool trước khi đóng gói
+        run: python -m py_compile tools/r1y.py
+
+      - name: Đóng gói thành 1 file .exe
+        shell: pwsh
+        run: |
+          python -m PyInstaller --onefile --console --name R1Y-Tool --hidden-import ssl --hidden-import _ssl --hidden-import hashlib --hidden-import http.client --hidden-import urllib.request --collect-submodules encodings --exclude-module tkinter --exclude-module unittest --exclude-module pydoc --exclude-module pdb --noconfirm --clean tools/r1y.py 2>&1 | Tee-Object -FilePath pyi.log
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "----- 30 dòng cuối log PyInstaller -----"
+            Get-Content pyi.log -Tail 30
+            throw "PyInstaller thất bại (exit $LASTEXITCODE)"
+          }
+
+      - name: Kiểm tra .exe chạy được (in trợ giúp)
+        shell: pwsh
+        run: |
+          if (-not (Test-Path dist/R1Y-Tool.exe)) { throw "Không tạo được dist/R1Y-Tool.exe" }
+          $size = (Get-Item dist/R1Y-Tool.exe).Length
+          Write-Host ("Kích thước: {0:N1} MB" -f ($size / 1MB))
+          # chặn trường hợp file rỗng / build lỗi một nửa
+          if ($size -lt 3MB) { throw "File .exe quá nhỏ ($size bytes) - build không đủ" }
+
+          Write-Host "--- chạy: R1Y-Tool.exe --help ---"
+          $ErrorActionPreference = "Continue"
+          $out = & .\dist\R1Y-Tool.exe --help 2>&1 | Out-String
+          $code = $LASTEXITCODE
+          Write-Host $out
+          Write-Host "exit code: $code"
+
+          # đẩy toàn bộ kết quả ra annotation để đọc được khi log bị chặn
+          $flat = ($out -replace "%", "%25" -replace "`r", "" -replace "`n", " | ")
+          if ($flat.Length -gt 2500) { $flat = $flat.Substring(0, 2500) }
+          Write-Host "::warning title=ExeRun::exit=$code | $flat"
+
+          # QUAN TRỌNG: không fail job vì bước này (chỉ để tham khảo),
+          # build ra .exe là đủ; lỗi runtime sẽ kiểm tra ở bước chạy menu test
+          if ($code -ne 0) { Write-Host "CANH BAO: .exe --help tra ma loi $code" }
+
+      - name: Chạy thử menu thật (nhập 9 để thoát)
+        shell: pwsh
+        run: |
+          Write-Host "--- R1Y-Tool.exe với input 9 ---"
+          "9" | & .\dist\R1Y-Tool.exe 2>&1 | Tee-Object -Variable menuOut
+          $flat = (($menuOut | Out-String) -replace "%", "%25" -replace "`r", "" -replace "`n", " | ")
+          if ($flat.Length -gt 2000) { $flat = $flat.Substring(0, 2000) }
+          Write-Host "::warning title=ExeMenu::output= $flat"
+          if (($menuOut | Out-String) -notmatch "Cài") { throw "Menu không hiện ra như mong đợi" }
+          Write-Host "OK: menu chạy được trong .exe"
+
+      - name: Đổi tên + tạo checksum
+        shell: pwsh
+        run: |
+          $ver = "dev"
+          if ($env:GITHUB_REF -like "refs/tags/v*") { $ver = $env:GITHUB_REF -replace "refs/tags/v", "" }
+          Copy-Item dist/R1Y-Tool.exe "dist/R1Y-Tool-v$ver.exe"
+          Get-FileHash "dist/R1Y-Tool-v$ver.exe" -Algorithm SHA256 |
+            ForEach-Object { "$($_.Hash.ToLower())  R1Y-Tool-v$ver.exe" } |
+            Out-File -Encoding ascii dist/checksums-exe.txt
+          Get-Content dist/checksums-exe.txt
+          echo "VER=$ver" >> $env:GITHUB_ENV
+
+      - name: Lưu bản build (.exe) vào Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: R1Y-Tool-EXE
+          path: |
+            dist/R1Y-Tool-v*.exe
+            dist/checksums-exe.txt
+          retention-days: 90
+
+      - name: Đính .exe vào Release (khi gắn tag)
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          # release có thể chưa tạo xong (workflow Build APK chạy song song) → chờ tối đa 5 phút
+          for ($i = 0; $i -lt 30; $i++) {
+            gh release view $tag 2>$null
+            if ($LASTEXITCODE -eq 0) { break }
+            Start-Sleep -Seconds 10
+          }
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $tag --title "R1-Y $env:VER" --notes "Bản phát hành $env:VER"
+          }
+          gh release upload $tag "dist/R1Y-Tool-v$env:VER.exe" --clobber
+          gh release upload $tag dist/checksums-exe.txt --clobber
+
+      - name: Báo lỗi chi tiết (đẩy log ra annotation)
+        if: failure()
+        shell: pwsh
+        run: |
+          $msg = "Không có log"
+          if (Test-Path pyi.log) {
+            $tail = (Get-Content pyi.log -Tail 25) -join " | "
+            $msg = $tail -replace "%", "%25" -replace "`r", "" -replace "`n", " | "
+          }
+          Write-Host "=== pyi.log (25 dòng cuối) ==="
+          if (Test-Path pyi.log) { Get-Content pyi.log -Tail 25 }
+          Write-Host "::error title=PyILog::$msg"

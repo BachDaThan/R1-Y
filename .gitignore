@@ -23,3 +23,9 @@ server/data/
 
 # Hệ thống
 *.log
+
+# Bản build tool .exe (do CI tạo ra, không đưa lên repo)
+dist/
+build/
+*.spec.bak
+tools/build_exe.log
