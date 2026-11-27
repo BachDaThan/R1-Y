@@ -194,11 +194,25 @@ adb connect 192.168.2.20:5555
 adb devices          # phải hiện "device"
 ```
 
+Vẫn offline → **cổng 5555 chưa mở**. Loa R1 mặc định chỉ bật ADB qua **USB**;
+phải bật chế độ WiFi một lần. Trong tool chọn menu **0 — Bật ADB qua WiFi**:
+
+1. Cắm cáp USB (máy tính cắm trực tiếp; điện thoại cần cáp OTG)
+2. Trên loa: Cài đặt → Tùy chọn nhà phát triển → bật **Gỡ lỗi USB**
+3. Bấm **Cho phép** trên loa khi được hỏi
+4. Chọn menu **0** → tool chạy `adb tcpip 5555` → in IP → nối lại tự động
+5. Rút cáp, từ đó ADB WiFi dùng được
+
+Hoặc chạy tay: `adb -s <serial-usb> tcpip 5555`
+
 Vẫn offline → trên loa: **tắt Gỡ lỗi ADB → bật lại** (hoặc khởi động lại loa).
 
-> **Không cần adb vẫn cài được**: script cài/gỡ không đụng gì tới firmware hiện tại
-> của loa. Chọn menu **3b — Cập nhật qua web**, hoặc:
+> **Không cần adb vẫn cài được**: việc cài không phụ thuộc firmware hiện tại của loa.
+> Chọn menu **3b — Cập nhật qua web**, hoặc:
 > `python3 tools/r1y.py webinstall --ip 192.168.2.20`
+>
+> Tool **tự phát hiện** trường hợp này: nếu `http://<IP>:8088` mở được (loa sống) mà
+> ADB offline, tool in *“Loa vẫn sống… chỉ ADB chưa bật”* và hỏi chuyển sang cài web luôn.
 
 ### `adb connect` báo "connected" nhưng `adb devices` không có máy
 

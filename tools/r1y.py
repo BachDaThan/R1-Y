@@ -77,6 +77,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import threading
 import time
 import zipfile
 import io
@@ -554,6 +555,58 @@ def explain_device_states(rows):
     return hints
 
 
+def scan_for_loa(progress=True):
+    """
+    Tự dò loa trong WiFi nhà: tìm máy mở cổng 8088 (web) hoặc 5555 (adb).
+    Dùng khi IP loa đổi hoặc người dùng không biết IP.
+    """
+    base = local_ip().rsplit(".", 1)[0] + "."
+    found = []
+    lock = threading.Lock()
+
+    def probe(i):
+        host = base + str(i)
+        for port in (WEB_PORT, ADB_PORT):
+            try:
+                c = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                c.settimeout(0.35)
+                if c.connect_ex((host, port)) == 0:
+                    with lock:
+                        found.append((host, port))
+                    c.close()
+                    return
+                c.close()
+            except Exception:
+                pass
+
+    if progress:
+        info("Đang dò loa trong %s0/24…" % base)
+    threads = [threading.Thread(target=probe, args=(i,), daemon=True) for i in range(1, 255)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=2)
+
+    # ưu tiên máy mở 8088 (chắc chắn là loa R1-Y)
+    found.sort(key=lambda x: 0 if x[1] == WEB_PORT else 1)
+    return found
+
+
+def scan_for_loa_ip(progress=True):
+    """Trả về IP loa đầu tiên dò được (hoặc None)."""
+    hosts = scan_for_loa(progress)
+    return hosts[0][0] if hosts else None
+
+
+def web_alive(ip, port=None, timeout=4):
+    """Loa còn sống không? Thử mở API web của loa (nhanh, không cần adb)."""
+    try:
+        http_json("http://%s:%d/api/status" % (ip, port or WEB_PORT), timeout=timeout)
+        return True
+    except Exception:
+        return False
+
+
 def adb_connect_smart(host, port=None, tries=3, verbose=True):
     """
     Kết nối ADB WiFi "chịu lỗi" — xử lý đúng các ca thực tế:
@@ -646,6 +699,13 @@ def connect_device(ip=None, interactive=True):
         serial_ok = adb_connect_smart(ip)
         if serial_ok:
             return serial_ok, ip
+        # IP có thể đã đổi (DHCP) → tự dò lại trong WiFi
+        if interactive:
+            new_ip = scan_for_loa_ip()
+            if new_ip and new_ip != ip:
+                ok("Loa có thể đã đổi IP: %s (đang thử…)" % new_ip)
+                if adb_connect_smart(new_ip):
+                    return "%s:%d" % (new_ip, ADB_PORT), new_ip
         rc, out = adb("connect", "%s:%d" % (ip, ADB_PORT), timeout=30, allow_fail=True)
         txt = out.strip()
         low = txt.lower()
@@ -717,6 +777,7 @@ def connect_device(ip=None, interactive=True):
         return serial_ok, manual
     devs = []
     out = ""
+    rc = 1
     if not devs:
         detail = out.strip()
         print()
@@ -732,6 +793,14 @@ def connect_device(ip=None, interactive=True):
             print("  → Trên loa có hộp thoại %s“Cho phép gỡ lỗi USB”%s — bấm Cho phép." % (C.BOLD, C.RESET))
         elif "refused" in low or "unable" in low or rc != 0:
             print("  → Cổng 5555 chưa mở: bật %sGỡ lỗi ADB%s trên loa, rồi %skhởi động lại loa%s." % (C.BOLD, C.RESET, C.BOLD, C.RESET))
+        # web 8088 mở được = loa sống, chỉ adb chưa bật → ưu tiên cài qua web
+        if web_alive(manual):
+            print()
+            ok("Loa vẫn sống: %shttp://%s:%d%s mở được — chỉ ADB chưa bật." % (C.BOLD, manual, WEB_PORT, C.RESET))
+            print("  → Cài được NGAY không cần ADB (loa tự tải + cài).")
+            if confirm("Cập nhật qua web ngay?", True):
+                flow_webinstall(argparse.Namespace(ip=manual))
+                raise SystemExit(0)
         print("  • Kiểm tra điện thoại và loa cùng 1 WiFi (thử mở %shttp://%s:8088%s)" % (C.BOLD, manual, C.RESET))
         print("  • Thử tay: adb connect %s:%d" % (manual, ADB_PORT))
         print("  • Không dùng được adb? Vẫn cài được bằng: %spython3 tools/r1y.py webinstall --ip %s%s"
@@ -1564,6 +1633,75 @@ def flow_webinstall(args):
         err(r.get("error") or "Loa chưa cài được. Thử lại hoặc dùng cách có adb.")
 
 
+def flow_adb_wifi(args):
+    """
+    Bật ADB qua WiFi trên loa (cần cắm USB một lần).
+    Đây là thứ hay thiếu nhất: cổng 5555 chưa mở thì 'adb connect' luôn offline.
+    """
+    title("Bật ADB qua WiFi cho loa (cổng 5555)")
+    info("Loa Phicomm R1 mặc định chỉ bật ADB qua USB. Phải bật chế độ WiFi một lần.")
+
+    rows = devices_raw()
+    usb = [d for d, st in rows if ":" not in d and st == "device"]
+    net = [d for d, st in rows if ":" in d and st == "device"]
+
+    if net and not usb:
+        ok("ADB WiFi đã bật sẵn: %s" % net[0])
+        info("Không cần làm gì thêm.")
+        return
+
+    if not usb:
+        print()
+        warn("Chưa thấy loa nối qua cáp USB.")
+        # thử dò loa qua mạng trước (nếu ADB WiFi đã bật thì khỏi cần cáp)
+        net_found = scan_for_loa_ip(progress=False)
+        if net_found:
+            ok("Thấy loa trong WiFi: %s" % net_found)
+            if adb_connect_smart(net_found):
+                ok("ADB WiFi đã bật sẵn — không cần cáp USB.")
+                return
+        print("  Cách làm:")
+        print("    1. Cắm cáp USB từ điện thoại/máy tính vào loa R1")
+        print("       (điện thoại cần cáp OTG; máy tính cắm trực tiếp)")
+        print("    2. Trên loa: Cài đặt → Tùy chọn nhà phát triển → bật %sGỡ lỗi USB%s"
+              % (C.BOLD, C.RESET))
+        print("    3. Trên điện thoại/máy bấm %sCho phép%s khi loa hỏi" % (C.BOLD, C.RESET))
+        print("    4. Chạy lại mục này")
+        print()
+        print("  Không có cáp USB? Dùng cách không cần ADB:")
+        print("    menu %s3b%s — loa tự tải + cài qua web 8088" % (C.BOLD, C.RESET))
+        if confirm("Thử quét lại thiết bị?", True):
+            rows = devices_raw()
+            usb = [d for d, st in rows if ":" not in d and st == "device"]
+        if not usb:
+            return
+
+    serial = usb[0]
+    ok("Thấy loa qua USB: %s" % serial)
+    info("Đang bật ADB qua WiFi…")
+    rc, out = adb("-s", serial, "tcpip", str(ADB_PORT), timeout=60, allow_fail=True)
+    if rc == 0 and ("restarting" in out.lower() or not out.strip()):
+        ok("Đã bật ADB WiFi (cổng %d)" % ADB_PORT)
+    else:
+        warn("adb tcpip trả lời: %s" % (out.strip() or "(không có)"))
+
+    time.sleep(2)
+    ip = None
+    try:
+        ip = device_ip(serial, None)
+    except Exception:
+        pass
+    if ip:
+        ok("IP loa: %s" % ip)
+        if adb_connect_smart(ip):
+            ok("Đã nối được ADB WiFi — giờ có thể rút cáp USB.")
+            info("Cài firmware: python3 tools/r1y.py install --ip %s" % ip)
+        else:
+            warn("Đã bật nhưng chưa nối được — thử rút cáp rồi chạy lại.")
+    else:
+        warn("Không đọc được IP loa — xem IP trong Cài đặt WiFi của loa.")
+
+
 def flow_status(args):
     serial, ip = None, args.ip
     try:
@@ -1655,6 +1793,7 @@ def _menu_once():
         ("6", "Cấu hình WiFi nhà cho loa (quét + nối)"),
         ("7", "Bật phát WiFi (hotspot) từ loa để điện thoại kết nối"),
         ("8", "Gỡ cài đặt / khôi phục app gốc"),
+        ("0", "Bật ADB qua WiFi (khi adb báo offline / cổng 5555 chưa mở)"),
         ("9", "Thoát"),
     ]
     for k, t in items:
@@ -1688,6 +1827,8 @@ def _menu_once():
         flow_hotspot(argparse.Namespace(ip=None, yes=False, on=None, ssid=None, password=None))
     elif choice == "8":
         flow_uninstall(argparse.Namespace(ip=None, yes=False))
+    elif choice == "0":
+        flow_adb_wifi(argparse.Namespace(ip=None))
     elif choice in ("9", "q", "quit", "exit", ""):
         print("Tạm biệt!")
         sys.exit(0)
@@ -1702,7 +1843,7 @@ def main():
         epilog="Nguồn firmware: github.com/%s" % REPO)
     ap.add_argument("command", nargs="?", default="menu",
                     choices=["install", "update", "status", "config", "uninstall",
-                             "hotspot", "wifi", "webinstall", "menu"],
+                             "hotspot", "wifi", "webinstall", "adbwifi", "menu"],
                     help="Việc cần làm (bỏ trống = mở menu)")
     ap.add_argument("--ip", help="IP loa trong WiFi, ví dụ 192.168.2.20")
     ap.add_argument("--apk", help="Dùng file APK chỉ định thay vì tải GitHub")
@@ -1766,6 +1907,8 @@ def main():
             flow_wifi(args)
         elif cmd == "webinstall":
             flow_webinstall(args)
+        elif cmd == "adbwifi":
+            flow_adb_wifi(args)
         elif cmd == "uninstall":
             flow_uninstall(args)
     except RuntimeError as e:
