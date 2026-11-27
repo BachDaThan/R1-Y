@@ -25,6 +25,9 @@ public class XiaozhiApplication extends Application {
     public void onCreate() {
         super.onCreate();
 
+        // Android 5.1 thiếu CA gốc mới -> nạp thêm để HTTPS (nhạc, xiaozhi) chạy được
+        com.bachdathan.r1y.util.CompatTls.install(this);
+
         Log.i(TAG, "===========================================");
         Log.i(TAG, "Xiaozhi Application started");
         Log.i(TAG, "Package: " + getPackageName());
