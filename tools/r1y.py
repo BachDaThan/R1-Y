@@ -30,6 +30,47 @@ import json
 import os
 import platform
 import re
+import sys
+
+
+def _setup_utf8_console():
+    """
+    Windows: console mặc định dùng cp1252/cp437 → in tiếng Việt là crash
+    (UnicodeEncodeError: 'charmap' codec...). Chuyển sang UTF-8 và bật
+    chế độ thay thế ký tự để KHÔNG BAO GIỜ crash vì chữ.
+    """
+    def _safe(stream):
+        """Đổi sang UTF-8 nếu bảng mã hiện tại không in được tiếng Việt."""
+        try:
+            enc = (getattr(stream, "encoding", "") or "").lower()
+            if enc.replace("-", "") in ("utf8", "utf_8"):
+                return
+            if hasattr(stream, "reconfigure"):
+                stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            try:  # Python < 3.7
+                import io
+                stream.flush()
+                if hasattr(sys, "stdout"):
+                    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+            except Exception:
+                pass
+
+    _safe(sys.stdout)
+    _safe(sys.stderr)
+
+    if os.name != "nt":
+        return
+    # đặt code page console sang 65001 (UTF-8)
+    try:
+        import ctypes
+        ctypes.windll.kernel32.SetConsoleOutputCP(65001)
+        ctypes.windll.kernel32.SetConsoleCP(65001)
+    except Exception:
+        pass
+
+
+_setup_utf8_console()
 import shutil
 import socket
 import subprocess
