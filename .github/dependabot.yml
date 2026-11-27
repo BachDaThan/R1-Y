@@ -13,6 +13,11 @@ updates:
       - "dependencies"
     commit-message:
       prefix: "chore"
+    ignore:
+      # AGP 3.0.0 + Gradle 4.1 + JDK 8 là combo bắt buộc cho Android 5.1 (loa R1).
+      # Nâng Gradle/AGP/okhttp lên bản mới sẽ làm build đỏ ngay.
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:

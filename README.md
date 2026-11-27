@@ -96,6 +96,35 @@ Thứ tự thử: mảng của bạn → máy chủ công cộng tự dò (`pipe
 `invidious`: `/api/v1/videos/{id}`) → máy chủ nhạc cuối cùng.
 Xem [docs/YOUTUBE_RESOLVER.md](docs/YOUTUBE_RESOLVER.md).
 
+## Tự build APK bằng bot GitHub
+
+APK do bot build, không cần cài Android SDK trên máy:
+
+1. Vào tab **Actions** → chọn **Build APK** → **Run workflow** (nhánh `main`).
+2. Chờ ~2 phút → mở run vừa chạy → mục **Artifacts**:
+   - `R1Y-Debug-APK` — bản debug (cài được ngay, tiện thử)
+   - `R1Y-Release-APK` — bản release
+   - `Checksums` — mã SHA256
+3. Tải `.zip` về, giải nén ra file `.apk`.
+
+### Tạo bản phát hành (để tool tự tải)
+
+Gắn tag dạng `v*` là bot tự build + tự tạo Release kèm APK:
+
+```bash
+git tag v1.6.1
+git push origin v1.6.1
+```
+
+Sau ~3 phút, APK có ở mục **Releases**. Từ đó:
+
+```bash
+python3 tools/r1y.py install --ip <IP_LOA>   # tool tự tải APK từ Releases
+```
+
+> Bot cũng tự chạy khi có push/PR vào `main`: Build APK, Lint, Unit Tests,
+> Python Server Check, quét secret, PR Check Bot.
+
 ## Điều khiển loa qua web
 
 Mở: **`http://<IP_LOA>:8088`** — cổng cố định **8088**, không đổi.
