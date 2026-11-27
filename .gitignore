@@ -1,0 +1,25 @@
+# Android
+*.iml
+.gradle/
+local.properties
+.idea/
+.DS_Store
+captures/
+.externalNativeBuild/
+.cxx/
+app/app/build/
+app/build/
+
+# APK (build ra trong CI, không đưa lên repo)
+*.apk
+*.aab
+
+# Python
+__pycache__/
+*.pyc
+server/yt-dlp
+server/r1y.env
+server/data/
+
+# Hệ thống
+*.log

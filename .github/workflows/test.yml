@@ -1,0 +1,167 @@
+name: Code Quality & Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    name: Lint Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 8 (Gradle 4.1 + AGP 3.0 chỉ chạy JDK 8)
+        uses: actions/setup-java@v4
+        with:
+          java-version: '8'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Grant execute permission
+        run: chmod +x app/gradlew
+
+      - name: Run Lint
+        run: |
+          cd app
+          ./gradlew lintDebug
+
+      - name: Upload Lint Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Lint-Report
+          path: |
+            app/app/build/reports/lint-results-debug.html
+            app/app/build/outputs/lint-results-debug.xml
+          if-no-files-found: warn
+          retention-days: 30
+
+  test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 8
+        uses: actions/setup-java@v4
+        with:
+          java-version: '8'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Grant execute permission
+        run: chmod +x app/gradlew
+
+      - name: Run Unit Tests
+        run: |
+          cd app
+          ./gradlew testDebugUnitTest --stacktrace
+
+      - name: Upload Test Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Test-Report
+          path: app/app/build/reports/tests/
+          if-no-files-found: warn
+          retention-days: 30
+
+  python-check:
+    name: Python Server Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Syntax check Python
+        run: |
+          python3 -m py_compile server/r1y_server.py && echo "OK: r1y_server.py"
+          python3 -m py_compile tools/r1y.py && echo "OK: r1y.py"
+
+      - name: Check scripts syntax
+        run: |
+          bash -n scripts/install.sh && echo "OK: install.sh"
+          bash -n scripts/update.sh && echo "OK: update.sh"
+          bash -n tools/r1y.sh && echo "OK: r1y.sh"
+          bash -n tools/r1y_termux.sh && echo "OK: r1y_termux.sh"
+          bash -n tools/termux_setup.sh && echo "OK: termux_setup.sh"
+
+      - name: Check tool CLI works
+        run: |
+          python3 tools/r1y.py --help > /dev/null && echo "OK: r1y.py --help"
+          echo 9 | python3 tools/r1y.py > /dev/null && echo "OK: menu thoát"
+          python3 tools/r1y.py --help | grep -q webinstall && echo "OK: lệnh webinstall"
+
+      - name: Check no secrets in repo
+        run: |
+          python3 - <<'EOS'
+          import os, re, sys
+
+          # Ghép pattern lúc chạy để chính file này không tự khớp
+          prefixes = ["gh" + "p_", "gh" + "o_", "gh" + "u_", "gh" + "s_", "gh" + "r_",
+                      "github" + "_pat_", "AK" + "IA", "xox" + "b-", "AI" + "za"]
+          pat = re.compile("|".join(re.escape(p) for p in prefixes))
+
+          skip_dirs = {".git", "build", "node_modules", ".gradle", "_tools", "__pycache__"}
+          skip_ext = {".apk", ".jar", ".png", ".jpg", ".zip", ".pyc", ".bat"}
+          hits = []
+
+          for root, dirs, files in os.walk("."):
+              dirs[:] = [d for d in dirs if d not in skip_dirs]
+              for f in files:
+                  if os.path.splitext(f)[1].lower() in skip_ext:
+                      continue
+                  path = os.path.join(root, f)
+                  try:
+                      text = open(path, encoding="utf-8", errors="ignore").read()
+                  except Exception:
+                      continue
+                  for i, line in enumerate(text.splitlines(), 1):
+                      if pat.search(line):
+                          hits.append("%s:%d: %s" % (path, i, line.strip()[:100]))
+
+          if hits:
+              print("❌ Nghi ngờ secret/token trong code:")
+              print("\n".join(hits))
+              sys.exit(1)
+          print("✅ Không có secret hard-code.")
+          EOS
+
+  code-analysis:
+    name: Code Analysis
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check Java files
+        run: |
+          echo "Số file Java:"
+          find app -name "*.java" -type f | wc -l
+          echo "Số dòng code Java:"
+          find app -name "*.java" -type f -exec cat {} + | wc -l
+
+      - name: Check for TODO/FIXME
+        run: |
+          grep -r "TODO\|FIXME" app/app/src/main/java/ || echo "Không có TODO/FIXME."
+
+      - name: Check dependencies
+        run: |
+          cd app
+          ./gradlew dependencies > dependencies.txt
+          echo "Dependencies đã lưu."
+        continue-on-error: true

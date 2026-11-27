@@ -1,0 +1,66 @@
+apply plugin: 'com.android.application'
+
+android {
+    // Phicomm R1: Android 5.1 (API 22), RK3229, armeabi-v7a
+    // compileSdk 23 chỉ để tương thích support library 23.4.0, app vẫn chạy trên API 22
+    compileSdkVersion 23
+    buildToolsVersion "23.0.3"
+
+    defaultConfig {
+        applicationId "com.bachdathan.r1y"
+        minSdkVersion 22
+        targetSdkVersion 22
+        versionCode 16
+        versionName "1.6.0"
+
+        multiDexEnabled true
+
+        ndk {
+            abiFilters "armeabi-v7a"
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+        debug {
+            debuggable true
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_7
+        targetCompatibility JavaVersion.VERSION_1_7
+    }
+
+    lintOptions {
+        abortOnError false
+    }
+}
+
+dependencies {
+    compile fileTree(dir: 'libs', include: ['*.jar'])
+
+    // Support library 23.4.0 - bản cuối hỗ trợ API 9+
+    compile 'com.android.support:appcompat-v7:23.4.0'
+    compile 'com.android.support:support-v4:23.4.0'
+    compile 'com.android.support:multidex:1.0.1'
+
+    // WebSocket (Xiaozhi)
+    compile 'org.java-websocket:Java-WebSocket:1.5.3'
+
+    // HTTP client (resolver/search/update)
+    compile 'com.squareup.okhttp3:okhttp:3.12.13'
+
+    // JSON
+    compile 'com.google.code.gson:gson:2.8.5'
+
+    // Log
+    compile 'com.jakewharton.timber:timber:4.5.1'
+
+    // Web server (giao diện R1-Y trên cổng 8088)
+    compile 'org.nanohttpd:nanohttpd:2.3.1'
+    compile 'org.nanohttpd:nanohttpd-websocket:2.3.1'
+}

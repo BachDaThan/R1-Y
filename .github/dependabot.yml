@@ -1,0 +1,25 @@
+# Dependabot — tự kiểm tra cập nhật phụ thuộc
+version: 2
+updates:
+  - package-ecosystem: "gradle"
+    directory: "/app"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "03:00"
+      timezone: "Asia/Ho_Chi_Minh"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "chore"
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "03:00"
+      timezone: "Asia/Ho_Chi_Minh"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
