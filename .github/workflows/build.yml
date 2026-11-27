@@ -59,6 +59,17 @@ jobs:
             fi
           done
 
+      - name: Bảo đảm có debug.keystore (để ký APK release)
+        run: |
+          KS="$HOME/.android/debug.keystore"
+          if [ ! -f "$KS" ]; then
+            mkdir -p "$HOME/.android"
+            keytool -genkeypair -v -keystore "$KS" -storepass android -keypass android \
+              -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=R1-Y Debug,O=BachDaThan,C=VN"
+          fi
+          ls -l "$KS"
+
       - name: Build Release APK
         run: |
           cd app
@@ -87,7 +98,8 @@ jobs:
           if [ -f "release/app-release.apk" ]; then
             mv release/app-release.apk release/R1Y-v${{ steps.version.outputs.version_name }}-release.apk
           elif [ -f "release/app-release-unsigned.apk" ]; then
-            mv release/app-release-unsigned.apk release/R1Y-v${{ steps.version.outputs.version_name }}-release.apk
+            # giữ chữ "unsigned" trong tên để tool biết APK chưa ký
+            mv release/app-release-unsigned.apk release/R1Y-v${{ steps.version.outputs.version_name }}-unsigned.apk
           fi
 
       - name: Upload Debug APK

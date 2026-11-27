@@ -206,7 +206,38 @@ python3 tools/r1y.py status --ip 192.168.2.20
 
 ---
 
-## 8. Cập nhật tool về sau
+## 8. Ký APK release (cho chủ repo)
+
+APK release **phải được ký** thì loa mới cài được, nếu không Android báo
+*“Ứng dụng chưa được cài đặt”*.
+
+Repo đã cấu hình sẵn: `build.gradle` ký release bằng **debug keystore** (CI tự
+sinh `~/.android/debug.keystore`), nên APK trong Releases **cài được ngay**.
+
+Muốn dùng **key riêng của bạn**:
+
+```bash
+# 1. Tạo keystore (giữ file này cẩn thận — mất là không update được nữa)
+keytool -genkeypair -v -keystore r1y-release.jks \
+  -alias r1y -keyalg RSA -keysize 2048 -validity 10000 \
+  -storepass <MAT_KHAU> -keypass <MAT_KHAU> -dname "CN=R1-Y,O=BachDaThan,C=VN"
+```
+
+2. Trong GitHub → **Settings → Secrets and variables → Actions**, thêm:
+   - `R1Y_KEYSTORE` — nội dung file `.jks` đã base64 (`base64 -w0 r1y-release.jks`)
+   - `R1Y_STORE_PASS`, `R1Y_KEY_PASS`, `R1Y_KEY_ALIAS`
+
+3. Trong workflow `build.yml`, giải mã keystore trước bước build:
+   ```yaml
+   - run: echo "${{ secrets.R1Y_KEYSTORE }}" | base64 -d > $RUNNER_TEMP/r1y.jks
+     env: {}
+   ```
+   và đặt biến `R1Y_KEYSTORE=$RUNNER_TEMP/r1y.jks`.
+
+> ⚠️ Key khác nhau thì **không cài đè** lên bản cũ được — phải gỡ app trước
+> (`python3 tools/r1y.py uninstall`).
+
+## 9. Cập nhật tool về sau
 
 ```bash
 cd ~/R1-Y

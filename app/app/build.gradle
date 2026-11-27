@@ -20,10 +20,22 @@ android {
         }
     }
 
+    signingConfigs {
+        // Ký bằng key debug để APK release cài được ngay trên loa (Android 5.1).
+        // Muốn key riêng: đặt r1y-release.jks vào app/ và khai báo trong gradle.properties.
+        releaseKey {
+            storeFile file(System.getenv("R1Y_KEYSTORE") ?: "${System.properties['user.home']}/.android/debug.keystore")
+            storePassword System.getenv("R1Y_STORE_PASS") ?: "android"
+            keyAlias System.getenv("R1Y_KEY_ALIAS") ?: "androiddebugkey"
+            keyPassword System.getenv("R1Y_KEY_PASS") ?: "android"
+        }
+    }
+
     buildTypes {
         release {
             minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            signingConfig signingConfigs.releaseKey
         }
         debug {
             debuggable true
