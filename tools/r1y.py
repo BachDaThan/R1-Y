@@ -1463,22 +1463,28 @@ def setup_home_wifi_after_install(ip, interactive=True):
     if not confirm("Cho loa vào WiFi nhà ngay bây giờ?", True):
         info("Để sau: nối WiFi của loa rồi chạy  python3 tools/r1y.py wifi --ip %s" % ip)
         return None
+    done = False
     try:
         if web_alive(ip, timeout=3):
-            flow_wifi(argparse.Namespace(ip=ip))
-        else:
-            configure_wifi_stock(host=ip)
+            done = bool(flow_wifi(argparse.Namespace(ip=ip)))
     except SystemExit:
-        warn("Cách 1 chưa được — thử API gốc của loa (cổng 8989)…")
+        done = False
+    if not done:
+        warn("Cách 1 chưa được (ROM chặn?) — thử API gốc của loa (cổng 8989)…")
         try:
-            configure_wifi_stock(host=ip)
+            done = bool(configure_wifi_stock(host=ip))
         except SystemExit:
-            return None
+            done = False
+    if not done:
+        warn("Chưa cho loa vào WiFi nhà được. Loa vẫn phát WiFi riêng — KHÔNG khởi động lại.")
+        return None
     # WiFi của loa tắt khi loa vào WiFi nhà → máy phải nối lại WiFi nhà rồi dò IP
     print()
     warn("Loa vừa chuyển sang WiFi nhà → điện thoại/PC của bạn cũng phải NỐI LẠI WiFi nhà.")
     if confirm("Đã nối lại WiFi nhà? Tool sẽ tự dò IP loa", True):
         new_ip = scan_for_loa_ip()
+        if new_ip == HOTSPOT_IP:
+            new_ip = None          # vẫn là WiFi riêng của loa, chưa phải WiFi nhà
         if new_ip:
             ok("Loa ở %s → http://%s:%d" % (new_ip, new_ip, WEB_PORT))
             return new_ip
@@ -1804,6 +1810,7 @@ def flow_wifi(args):
             print("\n  %sGiao diện loa:%s %s%s%s"
                   % (C.BOLD, C.RESET, C.CYAN, r.get("webUrl"), C.RESET))
             info("Loa đã vào WiFi nhà. Chưa cài R1-Y? Giữ nút 5 giây cho loa phát WiFi lại rồi cài qua 192.168.43.1.")
+        return True
     else:
         err(r.get("message") or "Không kết nối được")
         if "mật khẩu" in (r.get("message") or "").lower():
@@ -1813,7 +1820,8 @@ def flow_wifi(args):
                                    {"ssid": ssid}, timeout=15)
                 except Exception:
                     pass
-                flow_wifi(args)
+                return flow_wifi(args)
+        return False
 
 
 def flow_webinstall(args):
