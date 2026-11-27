@@ -4,6 +4,19 @@ Firmware **Lily R1** biến loa Phicomm R1 (Android 5.1) thành trợ lý giọn
 Xiaozhi + loa phát nhạc YouTube. Cài qua **cùng WiFi** bằng ADB, cập nhật
 ngay trong giao diện từ GitHub Releases của repo này.
 
+## 0. Cách nhanh nhất: tool A→Z
+
+Chỉ cần Python 3 và mạng — tool tự tải adb nếu thiếu, tự tìm loa, tự tải firmware
+từ GitHub Releases của repo này:
+
+```sh
+python3 tools/r1y.py        # Windows: bấm đúp tools\r1y.bat
+```
+
+Chọn **1 – Cài mới từ đầu (A→Z)**, làm theo hướng dẫn. Cập nhật sau này chọn **2**.
+Phần dưới là hướng dẫn làm thủ công nếu bạn muốn kiểm soát từng bước.
+Xem [tools/README.md](tools/README.md).
+
 ## 1. Chuẩn bị
 
 - Loa Phicomm R1, máy tính (Windows/Linux) **cùng WiFi** với loa.
@@ -83,7 +96,8 @@ Mở `http://192.168.2.20:8088` → **Thêm** → **Cập nhật firmware** →
 ### Trên máy tính
 
 ```sh
-./scripts/update.sh 192.168.2.20
+python3 tools/r1y.py update --ip 192.168.2.20   # cách khuyên dùng
+./scripts/update.sh 192.168.2.20                 # script ngắn
 ```
 
 ## 7. Máy chủ nhạc (tùy chọn — chỉ khi muốn dùng máy chủ riêng)

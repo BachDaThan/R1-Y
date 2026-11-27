@@ -20,19 +20,33 @@ thật, không còn hàng chục file ghi chú thừa.
 - 🤖 **Bot GitHub kiểm tra đàng hoàng**: CI build APK + tạo Release,
   lint/test/quét secret, bot PR/issue, Dependabot.
 
-## Cài nhanh
+## Cài nhanh — tool A→Z (khuyên dùng)
+
+Chỉ cần **Python 3**, không cần Android Studio, không cần tải APK thủ công:
 
 ```sh
-# 1. Loa và máy tính cùng WiFi, bật Gỡ lỗi USB trên loa
+python3 tools/r1y.py          # Windows: bấm đúp tools\r1y.bat
+```
+
+Chọn **1 – Cài mới từ đầu (A→Z)**: tool tự tìm loa trong WiFi, tải firmware từ
+GitHub Releases của repo này, cài, cấp quyền, bật tự khởi động, cấu hình và mở
+giao diện. Mục **2** là cập nhật firmware, mục **6** là gỡ/khôi phục app gốc.
+
+Chạy không hỏi gì:
+```sh
+python3 tools/r1y.py install --ip 192.168.2.20 --yes
+python3 tools/r1y.py update  --ip 192.168.2.20 --yes
+```
+
+Xem [tools/README.md](tools/README.md).
+
+## Cài bằng tay (script cũ / ADB)
+
+```sh
 adb connect <IP_LOA>:5555
-
-# 2. Tải APK từ Releases, hoặc build:
-cd app && ./gradlew assembleRelease
-
-# 3. Cài:
 ./scripts/install.sh <IP_LOA>
-
-# 4. Mở http://<IP_LOA>:8088 để cấu hình
+# cập nhật:
+./scripts/update.sh <IP_LOA>
 ```
 
 Chi tiết: [HUONG_DAN_CAI_DAT.md](HUONG_DAN_CAI_DAT.md)
@@ -49,6 +63,7 @@ R1-Y/
 │   └── config/             # XiaozhiConfig, R1YConfig
 ├── server/                 # Máy chủ nhạc cho PC (Tube/LiteTube style)
 │   └── r1y_server.py       # Invidious + Piped + custom, yt-dlp
+├── tools/                  # r1y.py — tool A→Z (cài, cập nhật, cấu hình, gỡ)
 ├── scripts/                # install.sh/.bat, update.sh (ADB WiFi)
 ├── docs/                   # Kiến trúc, hướng dẫn resolver
 └── .github/                # CI build/test, bot PR/issue, Dependabot
@@ -71,7 +86,15 @@ Xem [docs/YOUTUBE_RESOLVER.md](docs/YOUTUBE_RESOLVER.md).
 
 ## Cập nhật
 
-Mở `http://IP_LOA:8088` → **Thêm** → **Cập nhật firmware** → **Cập nhật ngay**.
+3 cách, chọn cách nào cũng được:
+
+| Cách | Lệnh |
+|---|---|
+| Tool A→Z trên PC | `python3 tools/r1y.py update --ip <IP_LOA>` |
+| Ngay trên loa | `http://IP_LOA:8088` → **Thêm** → **Cập nhật firmware** → **Cập nhật ngay** |
+| Script ngắn | `./scripts/update.sh <IP_LOA>`
+
+Nguồn duy nhất: **GitHub Releases của `BachDaThan/R1-Y`**.
 Loa kiểm tra `GET /repos/BachDaThan/R1-Y/releases/latest`, tải APK, cài
 (qua root `pm install -r` nếu có, ngược lại trình cài đặt).
 
@@ -86,6 +109,7 @@ git push origin v1.4.1
 
 ## Tài liệu
 
+- [Tool cài đặt A→Z](tools/README.md)
 - [Hướng dẫn cài đặt](HUONG_DAN_CAI_DAT.md)
 - [Kiến trúc](docs/ARCHITECTURE.md)
 - [Bộ lấy tiếng YouTube](docs/YOUTUBE_RESOLVER.md)

@@ -82,13 +82,21 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Syntax check r1y_server.py
-        run: python3 -m py_compile server/r1y_server.py && echo "OK: r1y_server.py"
+      - name: Syntax check Python
+        run: |
+          python3 -m py_compile server/r1y_server.py && echo "OK: r1y_server.py"
+          python3 -m py_compile tools/r1y.py && echo "OK: r1y.py"
 
       - name: Check scripts syntax
         run: |
           bash -n scripts/install.sh && echo "OK: install.sh"
           bash -n scripts/update.sh && echo "OK: update.sh"
+          bash -n tools/r1y.sh && echo "OK: r1y.sh"
+
+      - name: Check tool CLI works
+        run: |
+          python3 tools/r1y.py --help > /dev/null && echo "OK: r1y.py --help"
+          echo 7 | python3 tools/r1y.py > /dev/null && echo "OK: menu thoát"
 
       - name: Check no secrets in repo
         run: |

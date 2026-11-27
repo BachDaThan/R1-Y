@@ -65,6 +65,24 @@ giống cách Tube/LiteTube tự đổi player client khi lỗi.
   (nếu có) hoặc trình cài đặt hệ thống.
 - Trên PC: `./scripts/update.sh <IP_LOA>` làm tương tự qua ADB WiFi.
 
+## Tool cài đặt A→Z (PC)
+
+`tools/r1y.py` (Python 3, stdlib, chạy Win/macOS/Linux) lo trọn quy trình:
+
+| Bước | Việc |
+|---|---|
+| 1 | Tìm adb (tự tải Platform Tools nếu thiếu) |
+| 2 | `adb connect <IP>:5555` hoặc tự quét LAN tìm cổng 5555 |
+| 3 | Nhận diện loa (Phicomm R1, API 22) |
+| 4 | `pm hide` app Phicomm gốc (giữ để khôi phục) |
+| 5 | Tải APK từ GitHub Releases của repo này |
+| 6 | `pm install -r` (fallback `adb install`) |
+| 7 | Cấp quyền, kiểm tra root (LED), bật BootReceiver + whitelist pin |
+| 8 | Khởi động app, chờ `http://IP_LOA:8088/api/status` |
+| 9 | Cấu hình resolver YouTube qua `POST /api/settings` |
+
+Cùng tool đó có mục **cập nhật** (so `versionName` với tag GitHub) và **gỡ/khôi phục**.
+
 ## Cài đặt qua cùng WiFi
 
 Loa và máy tính cùng WiFi, dùng ADB over WiFi:
