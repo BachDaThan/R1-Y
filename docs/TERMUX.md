@@ -130,12 +130,46 @@ hiện trình cài đặt trên loa — bấm Cài).
 
 ## 6. Lỗi thường gặp (tool đã tự dịch sang tiếng Việt)
 
+### `adb connect` báo "connected" nhưng `adb devices` không có máy
+
+Đây là lỗi hay gặp nhất. Nguyên nhân theo thứ tự thường gặp:
+
+1. **ADB chưa được cho phép (authorization).** Lần đầu kết nối, loa sẽ hiện hộp
+   thoại *"Cho phép gỡ lỗi USB?"* — phải bấm **Cho phép** (tick *Luôn cho phép*).
+   Bấm nhầm **Từ chối** thì phải xoá key rồi làm lại:
+   ```bash
+   adb kill-server
+   rm -rf ~/.android/adbkey ~/.android/adbkey.pub
+   adb start-server
+   adb connect 192.168.2.20:5555
+   ```
+2. **Loa chưa bật Gỡ lỗi ADB.** Cài đặt → Giới thiệu (bấm 7 lần) → Tùy chọn nhà
+   phát triển → bật **Gỡ lỗi ADB/USB**. Sau khi bật, **khởi động lại loa** một lần.
+3. **Cổng 5555 chưa mở.** Một số ROM chỉ mở 5555 sau khi cắm USB một lần, hoặc
+   cần lệnh (qua USB): `adb tcpip 5555`.
+4. **Điện thoại dùng mạng 4G/different VLAN.** Tắt 4G, bảo đảm cả hai cùng WiFi.
+
+Phân biệt nhanh bằng phản hồi của adb:
+
+| adb trả lời | Nghĩa |
+|---|---|
+| `connected to ...` + `adb devices` trống | Đã kết nối TCP nhưng **chưa authorize** → bấm Cho phép trên loa |
+| `failed to authenticate` | Key bị từ chối → xoá `~/.android/adbkey` rồi làm lại |
+| `Connection refused` / `unable to connect` | Cổng 5555 **chưa mở** → bật Gỡ lỗi ADB + khởi động lại loa |
+| `offline` | Loa treo ADB → tắt/bật lại Gỡ lỗi ADB |
+
+> Không giải quyết được? Bỏ qua adb, dùng luôn:
+> `python3 tools/r1y.py webinstall --ip 192.168.2.20`
+
+### Các lỗi khác
+
 | Tool báo | Nghĩa là | Làm gì |
 |---|---|---|
 | `Loa chưa phản hồi — kiểm tra cùng WiFi` | Không kết nối được tới loa | Kiểm tra 2 máy cùng WiFi, IP đúng |
 | `Loa chưa cho phép máy này — bấm Cho phép trên loa` | ADB chưa authorize | Nhìn màn hình loa, bấm **Cho phép** (nhớ tick *luôn cho phép*) |
 | `Thiếu công cụ cần thiết — tool sẽ thử tự cài lại` | Chưa có adb/git | Chạy lại `bash tools/termux_setup.sh` |
 | `Không có quyền truy cập — chạy termux-setup-storage` | Chưa cấp quyền bộ nhớ | `termux-setup-storage` rồi Allow |
+| `No such file or directory` khi cài gói | Termux không có `/tmp` | Đã sửa; chạy `git pull` để lấy bản mới |
 | `Máy chủ không có dữ liệu này` | Repo chưa có Release | Dùng `--apk <file>` hoặc chờ bản phát hành |
 | `Cài đặt bị từ chối — tool đã thử gỡ bản cũ` | Xung đột chữ ký APK | Tool tự gỡ rồi cài lại; nếu vẫn lỗi báo lại |
 

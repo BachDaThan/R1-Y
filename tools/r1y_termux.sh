@@ -8,6 +8,10 @@
 #  - Có sẵn mục cấu hình WiFi cho loa + cài firmware qua WiFi
 # ==========================================================
 set -u
+
+# Termux không có /tmp — dùng TMPDIR
+LOGF="${TMPDIR:-${PREFIX:-/tmp}/tmp}/r1y-install.log"
+mkdir -p "$(dirname "$LOGF")" 2>/dev/null || LOGF="/dev/null"
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "$DIR/.." && pwd)"
 
@@ -37,7 +41,7 @@ need_python() {
     elif command -v python >/dev/null 2>&1; then PY=python
     else
         warn "Chưa có Python — đang tự cài…"
-        pkg install -y python >/tmp/r1y-install.log 2>&1 || {
+        pkg install -y python >"$LOGF" 2>&1 || {
             err "Không tự cài được Python."
             info "Mở Termux và chạy: ${BOLD}pkg install python${N}"
             exit 1
@@ -60,7 +64,7 @@ need_python
 if ! command -v adb >/dev/null 2>&1; then
     if command -v pkg >/dev/null 2>&1; then
         info "Chưa có adb — đang tự cài (android-tools)…"
-        pkg install -y android-tools >/tmp/r1y-install.log 2>&1 || true
+        pkg install -y android-tools >"$LOGF" 2>&1 || true
     fi
 fi
 if command -v adb >/dev/null 2>&1; then
