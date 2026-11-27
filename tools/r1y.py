@@ -1482,13 +1482,21 @@ def setup_home_wifi_after_install(ip, interactive=True):
     print()
     warn("Loa vừa chuyển sang WiFi nhà → điện thoại/PC của bạn cũng phải NỐI LẠI WiFi nhà.")
     if confirm("Đã nối lại WiFi nhà? Tool sẽ tự dò IP loa", True):
-        new_ip = scan_for_loa_ip()
-        if new_ip == HOTSPOT_IP:
-            new_ip = None          # vẫn là WiFi riêng của loa, chưa phải WiFi nhà
+        new_ip = None
+        for attempt in range(1, 4):            # loa cần 20-60 giây để vào WiFi nhà
+            info("Chờ loa vào WiFi nhà… (lần %d/3)" % attempt)
+            time.sleep(20)
+            new_ip = scan_for_loa_ip()
+            if new_ip == HOTSPOT_IP:
+                new_ip = None      # vẫn là WiFi riêng của loa, chưa phải WiFi nhà
+            if new_ip:
+                break
         if new_ip:
             ok("Loa ở %s → http://%s:%d" % (new_ip, new_ip, WEB_PORT))
             return new_ip
-        warn("Chưa dò thấy loa. Xem IP trong trang quản lý router rồi mở http://IP_LOA:8088")
+        warn("Chưa dò thấy loa. Xem IP loa trong trang quản lý router rồi mở http://IP_LOA:8088")
+        print("  • Loa R1 chỉ bắt WiFi %s2.4GHz%s (không có 5GHz) và phải đúng mật khẩu" % (C.BOLD, C.RESET))
+        print("  • Nếu loa phát lại WiFi 'Phicomm R1' = nối WiFi nhà thất bại → làm lại bước WiFi")
     return None
 
 
