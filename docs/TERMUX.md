@@ -150,6 +150,10 @@ hiện trình cài đặt trên loa — bấm Cài).
 
 ## 4. Cấu hình WiFi cho loa (khi loa chưa vào WiFi nhà)
 
+> 🔑 **Điểm quan trọng nhất**: trên firmware gốc, loa **chỉ mở ADB khi đang phát
+> WiFi riêng**. Nối ADB qua WiFi nhà sẽ **luôn `offline`** — không phải lỗi tool,
+> không phải lỗi firmware.
+
 Đây là luồng "giữ nút tròn" bạn nói:
 
 1. **Giữ nút tròn trên loa** → loa phát WiFi tên **`R1-Y`** (mật khẩu `r1y12345678`).

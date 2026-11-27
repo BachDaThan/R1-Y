@@ -130,6 +130,27 @@ python3 tools/r1y.py install --ip <IP_LOA>   # tool tự tải APK từ Releases
 > Bot cũng tự chạy khi có push/PR vào `main`: Build APK, Lint, Unit Tests,
 > Python Server Check, quét secret, PR Check Bot.
 
+## Loa đang chạy firmware gốc (Phicomm/Lily) — cài R1-Y thế nào
+
+Trên firmware gốc, loa **chỉ mở ADB khi đang phát WiFi riêng**. Đừng cố nối
+ADB qua WiFi nhà — sẽ luôn `offline`.
+
+**Đúng thứ tự:**
+
+| Bước | Làm gì |
+|---|---|
+| 1 | Giữ **nút tròn** trên loa ~6 giây → loa phát WiFi riêng (tên kiểu `Phicomm_R1_XXXX`) |
+| 2 | Điện thoại/PC nối vào WiFi đó |
+| 3 | `r1y` → chọn **6** → nhập tên + mật khẩu WiFi nhà → loa tự vào WiFi nhà |
+| 4 | Chờ ~20 giây, `r1y` → chọn **5** (tool tự dò IP mới của loa) |
+| 5 | `r1y` → chọn **1** → cài firmware R1-Y |
+
+> Tool cũng tự thử `192.168.43.1:5555` (IP loa ở chế độ phát WiFi) trước khi
+> báo lỗi, đúng như cách các tool cộng đồng vẫn làm với loa R1.
+>
+> Cấu hình WiFi dùng API gốc `http://192.168.43.1:8989/api/configwifi` —
+> hoạt động **cả khi chưa cài R1-Y**.
+
 ## Điều khiển loa qua web
 
 Mở: **`http://<IP_LOA>:8088`** — cổng cố định **8088**, không đổi.
