@@ -1,0 +1,22 @@
+name: Đề xuất tính năng
+description: Đề xuất tính năng mới cho Lily R1
+title: "[feat] "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: Tính năng muốn có
+      placeholder: "Ví dụ: thêm nút lặp lại trong giao diện Nhạc..."
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Vì sao cần?
+      placeholder: "Dùng để làm gì?"
+  - type: input
+    id: version
+    attributes:
+      label: Phiên bản hiện tại
+      placeholder: "v1.4.0"

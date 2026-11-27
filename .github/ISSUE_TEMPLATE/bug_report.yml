@@ -1,0 +1,39 @@
+name: Báo lỗi
+description: Báo lỗi firmware Lily R1
+title: "[bug] "
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: Mô tả lỗi
+      description: Lỗi gì, xảy ra khi nào?
+      placeholder: "Ví dụ: loa không phát được nhạc YouTube..."
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Phiên bản firmware
+      description: Xem ở http://IP_LOA:8088 (mục Trạng thái)
+      placeholder: "v1.4.0"
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Thiết bị
+      description: Mẫu loa, đã root chưa?
+      placeholder: "Phicomm R1, đã root / chưa root"
+  - type: input
+    id: network
+    attributes:
+      label: Mạng
+      description: IP loa, loa và máy chủ có cùng WiFi không?
+      placeholder: "192.168.2.20, cùng WiFi"
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log (nếu có)
+      description: "adb logcat | grep -E 'Xiaozhi|Resolver|WebServer'"
+      render: text

@@ -1,0 +1,168 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp"
+    android:gravity="center">
+
+    <TextView
+        android:id="@+id/title_text"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Xiaozhi Voice Assistant"
+        android:textSize="24sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="20dp"/>
+
+    <TextView
+        android:id="@+id/pairingCodeText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Pairing Code: ---"
+        android:textSize="24sp"
+        android:textColor="#4CAF50"
+        android:textStyle="bold"
+        android:gravity="center"
+        android:background="#F0F0F0"
+        android:padding="20dp"
+        android:layout_marginBottom="10dp"/>
+
+    <Button
+        android:id="@+id/copyButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Sao Chep Ma"
+        android:layout_gravity="center"
+        android:layout_marginBottom="20dp"/>
+
+    <TextView
+        android:id="@+id/instructionsText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Hướng dẫn kết nối:\n1. Bấm nút 'Connect' để bắt đầu\n2. Nhập mã vào trang web\n3. Đợi kích hoạt hoàn tất"
+        android:textSize="14sp"
+        android:gravity="center"
+        android:layout_marginBottom="15dp"/>
+
+    <!-- Activation Code Display (py-xiaozhi method) -->
+    <TextView
+        android:id="@+id/activationCodeText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Mã kích hoạt: ------"
+        android:textSize="20sp"
+        android:textColor="#FF5722"
+        android:textStyle="bold"
+        android:gravity="center"
+        android:background="#FFF3E0"
+        android:padding="15dp"
+        android:layout_marginBottom="10dp"
+        android:visibility="gone"/>
+
+    <!-- Activation Progress -->
+    <TextView
+        android:id="@+id/activationProgressText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Đang kiểm tra kích hoạt..."
+        android:textSize="14sp"
+        android:textColor="#FF9800"
+        android:gravity="center"
+        android:layout_marginBottom="10dp"
+        android:visibility="gone"/>
+
+    <TextView
+        android:id="@+id/statusText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Status: Idle"
+        android:textSize="16sp"
+        android:textStyle="bold"
+        android:gravity="center"
+        android:layout_marginBottom="10dp"/>
+
+    <TextView
+        android:id="@+id/stateText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Trang thai: San sang"
+        android:textSize="16sp"
+        android:textColor="#2196F3"
+        android:gravity="center"
+        android:layout_marginBottom="10dp"/>
+
+    <TextView
+        android:id="@+id/connection_status_text"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Connection: Not connected"
+        android:textSize="16sp"
+        android:layout_marginBottom="20dp"/>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center">
+
+        <Button
+            android:id="@+id/connectButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Connect"
+            android:layout_marginRight="5dp"/>
+
+        <Button
+            android:id="@+id/stop_button"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Stop"
+            android:layout_marginLeft="5dp"/>
+    </LinearLayout>
+
+    <!-- Cancel Activation Button -->
+    <Button
+        android:id="@+id/cancelActivationButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Hủy Kích Hoạt"
+        android:layout_gravity="center"
+        android:layout_marginTop="10dp"
+        android:visibility="gone"/>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginTop="10dp"
+        android:gravity="center">
+
+        <Button
+            android:id="@+id/settings_button"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Settings"
+            android:layout_marginRight="5dp"/>
+
+        <Button
+            android:id="@+id/resetButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Reset Pairing"
+            android:layout_marginLeft="5dp"/>
+    </LinearLayout>
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="HTTP Server: http://[R1_IP]:8088"
+        android:textSize="12sp"
+        android:textColor="#999"
+        android:layout_marginTop="30dp"/>
+
+</LinearLayout>

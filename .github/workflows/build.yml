@@ -1,0 +1,192 @@
+name: Build APK
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 8
+        uses: actions/setup-java@v4
+        with:
+          java-version: '8'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x app/gradlew
+
+      - name: Cache Gradle packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: Build Debug APK
+        run: |
+          cd app
+          ./gradlew assembleDebug --stacktrace
+
+      - name: Build Release APK
+        run: |
+          cd app
+          ./gradlew assembleRelease --stacktrace
+
+      - name: Get version info
+        id: version
+        run: |
+          VERSION_NAME=$(grep "versionName" app/app/build.gradle | awk -F'"' '{print $2}')
+          VERSION_CODE=$(grep "versionCode" app/app/build.gradle | awk '{print $2}')
+          echo "version_name=$VERSION_NAME" >> $GITHUB_OUTPUT
+          echo "version_code=$VERSION_CODE" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION_NAME (Code: $VERSION_CODE)"
+
+      - name: List APK files
+        run: |
+          cd app/app/build/outputs/apk
+          find . -name "*.apk" -type f -exec ls -lh {} \;
+
+      - name: Rename APKs
+        run: |
+          cd app/app/build/outputs/apk
+          if [ -f "debug/app-debug.apk" ]; then
+            mv debug/app-debug.apk debug/LilyR1-v${{ steps.version.outputs.version_name }}-debug.apk
+          fi
+          if [ -f "release/app-release.apk" ]; then
+            mv release/app-release.apk release/LilyR1-v${{ steps.version.outputs.version_name }}-release.apk
+          elif [ -f "release/app-release-unsigned.apk" ]; then
+            mv release/app-release-unsigned.apk release/LilyR1-v${{ steps.version.outputs.version_name }}-release.apk
+          fi
+
+      - name: Upload Debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: LilyR1-Debug-APK
+          path: app/app/build/outputs/apk/debug/*.apk
+          retention-days: 30
+
+      - name: Upload Release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: LilyR1-Release-APK
+          path: app/app/build/outputs/apk/release/*.apk
+          retention-days: 90
+
+      - name: Generate checksum
+        run: |
+          cd app/app/build/outputs/apk/release
+          sha256sum *.apk > checksums.txt
+          cat checksums.txt
+
+      - name: Upload checksum
+        uses: actions/upload-artifact@v4
+        with:
+          name: Checksums
+          path: app/app/build/outputs/apk/release/checksums.txt
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download Release APK
+        uses: actions/download-artifact@v4
+        with:
+          name: LilyR1-Release-APK
+          path: release-apk
+
+      - name: Download Checksums
+        uses: actions/download-artifact@v4
+        with:
+          name: Checksums
+          path: checksums
+
+      - name: Get version from tag
+        id: tag_version
+        run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Lily R1 ${{ steps.tag_version.outputs.version }}
+          body: |
+            ## Lily R1 (R1-Y) — Firmware cho loa Phicomm R1
+
+            ### 📦 Phiên bản: ${{ steps.tag_version.outputs.version }}
+
+            ### 📥 Tải xuống
+            - **Release APK**: bản production, đã tối ưu
+            - **Checksums**: SHA256 để kiểm tra tính toàn vẹn
+
+            ### 🚀 Cài đặt qua cùng WiFi
+            ```bash
+            # Tải APK
+            wget https://github.com/${{ github.repository }}/releases/download/v${{ steps.tag_version.outputs.version }}/LilyR1-v${{ steps.tag_version.outputs.version }}-release.apk
+
+            # Cài qua ADB WiFi (loa và máy tính cùng WiFi)
+            adb connect <IP_LOA>:5555
+            adb install -r LilyR1-v${{ steps.tag_version.outputs.version }}-release.apk
+            ```
+            Hoặc chạy script trong repo: `./scripts/install.sh <IP_LOA>`
+
+            ### 🔄 Cập nhật trong giao diện
+            Mở `http://<IP_LOA>:8088` → mục **Thêm** → **Cập nhật firmware** → **Cập nhật ngay**.
+            Loa tự kiểm tra GitHub Releases của repo này.
+
+            ### 🎵 Bộ lấy tiếng YouTube
+            Mở `http://<IP_LOA>:8088` → mục **Nhạc** → **Bộ lấy tiếng YouTube**.
+            Mảng JSON `[{"type":"piped|invidious|custom","url":"..."}]`, thử đúng thứ tự.
+            Để `[]` thì loa tự tìm máy chủ công khai, cuối cùng là máy chủ nhạc.
+
+            ### ✨ Tính năng
+            - ✅ Trợ lý giọng nói Xiaozhi (wake word, TTS, LED)
+            - ✅ Tìm kiếm YouTube chính xác (kế thừa Tube + LiteTube)
+            - ✅ Cài qua WiFi, cập nhật từ GitHub ngay trong giao diện
+            - ✅ Tự khởi động khi bật loa
+
+            ---
+            **Full Changelog**: https://github.com/${{ github.repository }}/compare/${{ github.event.before }}...v${{ steps.tag_version.outputs.version }}
+          files: |
+            release-apk/*.apk
+            checksums/checksums.txt
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  notify:
+    name: Build Status
+    needs: build
+    runs-on: ubuntu-latest
+    if: always()
+
+    steps:
+      - name: Build Success
+        if: needs.build.result == 'success'
+        run: echo "✅ Build thành công! APK có trong mục Actions."
+
+      - name: Build Failed
+        if: needs.build.result == 'failure'
+        run: |
+          echo "❌ Build thất bại! Xem log ở trên."
+          exit 1

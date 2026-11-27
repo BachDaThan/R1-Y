@@ -1,0 +1,22 @@
+name: Hỗ trợ cài đặt
+description: Cần giúp cài firmware qua WiFi
+title: "[install] "
+labels: [installation]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: Đang kẹt ở bước nào?
+      placeholder: "Ví dụ: adb connect không thấy loa..."
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Thiết bị + mạng
+      placeholder: "Phicomm R1, IP loa, cùng WiFi?"
+  - type: textarea
+    id: logs
+    attributes:
+      label: Lệnh đã chạy + kết quả
+      render: text

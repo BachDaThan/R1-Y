@@ -1,0 +1,173 @@
+name: R1-Y Bot
+
+# Bot GitHub kiểm tra đàng hoàng:
+# - PR: kiểm tra tiêu đề, nhãn, checklist, comment hướng dẫn
+# - Issue: tự gắn nhãn, nhắc thông tin còn thiếu
+# - Release: tự tạo ghi chú release từ commit
+# - Dependabot: tự kiểm tra cập nhật phụ thuộc (xem dependabot.yml)
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  issues:
+    types: [opened, reopened]
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  pr-check:
+    name: PR Check Bot
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Kiểm tra PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const title = pr.title || '';
+            const body = pr.body || '';
+            const comments = [];
+
+            // 1) Tiêu đề phải có tiền tố [fix]/[feat]/[docs]/[chore]/[release]
+            const okPrefix = /^\[(fix|feat|docs|chore|release|hotfix)\]/i.test(title);
+            if (!okPrefix) {
+              comments.push('⚠️ **Tiêu đề PR** nên bắt đầu bằng `[fix]`, `[feat]`, `[docs]`, `[chore]` hoặc `[release]`. Ví dụ: `[fix] Sửa resolver YouTube`');
+            }
+
+            // 2) Mô tả phải có checklist đã tick
+            const hasChecklist = /- \[x\]/i.test(body);
+            if (!hasChecklist) {
+              comments.push('📋 **Checklist** trong mô tả PR chưa được tick. Vui lòng tick các mục đã làm (xem mẫu PR).');
+            }
+
+            // 3) PR quá lớn thì nhắc chia nhỏ
+            const changed = pr.changed_files || 0;
+            if (changed > 50) {
+              comments.push(`📦 PR này sửa **${changed} file** — khá lớn. Nếu có thể, hãy chia nhỏ để dễ review.`);
+            }
+
+            // 4) Kiểm tra có build APK không (khi sửa app/)
+            const touchesApp = /app\//.test(JSON.stringify(pr)) || body.includes('app/');
+            if (touchesApp) {
+              comments.push('🔨 PR này chạm vào `app/` — CI sẽ build APK. Vui lòng đợi check **Build APK** xanh trước khi merge.');
+            }
+
+            if (comments.length > 0) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.number,
+                body: `Xin chào! Bot R1-Y kiểm tra PR này:\n\n${comments.join('\n')}\n\nCảm ơn bạn đã đóng góp! 🎵`
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.number,
+                body: '✅ Bot R1-Y: PR đạt chuẩn (tiêu đề + checklist). Đang chờ CI build APK. Cảm ơn bạn! 🎵'
+              });
+            }
+
+            // 5) Tự gắn nhãn theo tiêu đề
+            let labels = [];
+            if (/\[fix\]/i.test(title)) labels = ['bug'];
+            else if (/\[feat\]/i.test(title)) labels = ['enhancement'];
+            else if (/\[docs\]/i.test(title)) labels = ['documentation'];
+            if (labels.length > 0) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.number,
+                labels: labels
+              });
+            }
+
+  issue-triage:
+    name: Issue Triage Bot
+    if: github.event_name == 'issues'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Phân loại issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const title = issue.title || '';
+            const body = issue.body || '';
+            let labels = ['triage'];
+
+            if (/lỗi|bug|error|crash|không phát|không chạy/i.test(title + ' ' + body)) {
+              labels.push('bug');
+            } else if (/tính năng|feature|đề xuất|thêm/i.test(title + ' ' + body)) {
+              labels.push('enhancement');
+            } else if (/cài đặt|install|adb|wifi/i.test(title + ' ' + body)) {
+              labels.push('installation');
+            } else if (/youtube|nhạc|resolver|tìm kiếm/i.test(title + ' ' + body)) {
+              labels.push('youtube');
+            } else if (/cập nhật|update|github/i.test(title + ' ' + body)) {
+              labels.push('update');
+            }
+
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              labels: labels
+            });
+
+            const missing = [];
+            if (!/phiên bản|version|v\d/i.test(body)) missing.push('phiên bản firmware (xem ở http://IP_LOA:8088)');
+            if (!/loa|r1|phicomm/i.test(body)) missing.push('mẫu loa (Phicomm R1?)');
+            if (!/mạng|wifi|lan|ip/i.test(body)) missing.push('mạng/IP loa');
+
+            let msg = 'Xin chào! Bot R1-Y đã phân loại issue này: ' + labels.join(', ') + '.\n\n';
+            if (missing.length > 0) {
+              msg += 'Để hỗ trợ nhanh hơn, bạn bổ sung thêm:\n' + missing.map(m => '- ' + m).join('\n') + '\n\n';
+            }
+            msg += 'Cảm ơn bạn! 🎵';
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              body: msg
+            });
+
+  release-notes:
+    name: Release Notes Bot
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Tạo ghi chú release
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const release = context.payload.release;
+            const tag = release.tag_name;
+            // Lấy commit từ tag trước đến tag này
+            const commits = await github.rest.repos.listCommits({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: tag,
+              per_page: 50
+            });
+            const msgs = commits.data
+              .map(c => `- ${c.commit.message.split('\n')[0]} (${c.sha.substring(0, 7)})`)
+              .join('\n');
+            const body = `## Lily R1 ${tag}\n\n### Thay đổi gần đây\n${msgs}\n\n### Cài đặt\nXem README.md và HUONG_DAN_CAI_DAT.md trong repo.\n\n### Cập nhật trên loa\nMở http://<IP_LOA>:8088 → Thêm → Cập nhật firmware.`;
+            await github.rest.repos.updateRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              release_id: release.id,
+              body: body
+            });
+            console.log('Đã cập nhật ghi chú release ' + tag);

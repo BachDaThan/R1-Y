@@ -1,0 +1,127 @@
+name: Code Quality & Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    name: Lint Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 8
+        uses: actions/setup-java@v4
+        with:
+          java-version: '8'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Grant execute permission
+        run: chmod +x app/gradlew
+
+      - name: Run Lint
+        run: |
+          cd app
+          ./gradlew lintDebug
+
+      - name: Upload Lint Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Lint-Report
+          path: app/app/build/reports/lint-results-debug.html
+          retention-days: 30
+
+  test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 8
+        uses: actions/setup-java@v4
+        with:
+          java-version: '8'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Grant execute permission
+        run: chmod +x app/gradlew
+
+      - name: Run Unit Tests
+        run: |
+          cd app
+          ./gradlew testDebugUnitTest --stacktrace
+
+      - name: Upload Test Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Test-Report
+          path: app/app/build/reports/tests/testDebugUnitTest/
+          retention-days: 30
+
+  python-check:
+    name: Python Server Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Syntax check r1y_server.py
+        run: python3 -m py_compile server/r1y_server.py && echo "OK: r1y_server.py"
+
+      - name: Check scripts syntax
+        run: |
+          bash -n scripts/install.sh && echo "OK: install.sh"
+          bash -n scripts/update.sh && echo "OK: update.sh"
+
+      - name: Check no secrets in repo
+        run: |
+          echo "Kiểm tra không có token/mật khẩu hard-code..."
+          if grep -rIn "github_pat_\|ghp_\|gho_\|AKIA" --exclude-dir=.git .; then
+            echo "❌ Phát hiện secret trong code!"
+            exit 1
+          else
+            echo "✅ Không có secret hard-code."
+          fi
+
+  code-analysis:
+    name: Code Analysis
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check Java files
+        run: |
+          echo "Số file Java:"
+          find app -name "*.java" -type f | wc -l
+          echo "Số dòng code Java:"
+          find app -name "*.java" -type f -exec cat {} + | wc -l
+
+      - name: Check for TODO/FIXME
+        run: |
+          grep -r "TODO\|FIXME" app/app/src/main/java/ || echo "Không có TODO/FIXME."
+
+      - name: Check dependencies
+        run: |
+          cd app
+          ./gradlew dependencies > dependencies.txt
+          echo "Dependencies đã lưu."
+        continue-on-error: true
