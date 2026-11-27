@@ -29,7 +29,7 @@ if errorlevel 1 (
 )
 
 echo [2/3] Dong goi (mat 1-2 phut)...
-python -m PyInstaller tools\r1y.spec --noconfirm --clean >build_exe.log 2>&1
+python -m PyInstaller --onefile --console --name R1Y-Tool --hidden-import ssl --hidden-import _ssl --hidden-import hashlib --hidden-import http.client --hidden-import urllib.request --collect-submodules encodings --exclude-module tkinter --exclude-module unittest --exclude-module pydoc --exclude-module pdb --noconfirm --clean tools\r1y.py >build_exe.log 2>&1
 if errorlevel 1 (
     echo [LOI] Dong goi that bai. Xem file build_exe.log
     pause

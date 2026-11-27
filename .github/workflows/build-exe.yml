@@ -43,7 +43,14 @@ jobs:
         run: python -m py_compile tools/r1y.py
 
       - name: Đóng gói thành 1 file .exe
-        run: python -m PyInstaller tools/r1y.spec --noconfirm --clean
+        shell: pwsh
+        run: |
+          python -m PyInstaller --onefile --console --name R1Y-Tool --hidden-import ssl --hidden-import _ssl --hidden-import hashlib --hidden-import http.client --hidden-import urllib.request --collect-submodules encodings --exclude-module tkinter --exclude-module unittest --exclude-module pydoc --exclude-module pdb --noconfirm --clean tools/r1y.py 2>&1 | Tee-Object -FilePath pyi.log
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "----- 30 dòng cuối log PyInstaller -----"
+            Get-Content pyi.log -Tail 30
+            throw "PyInstaller thất bại (exit $LASTEXITCODE)"
+          }
 
       - name: Kiểm tra .exe chạy được (in trợ giúp)
         shell: pwsh

@@ -37,7 +37,7 @@ fi
 ok "PyInstaller sẵn sàng"
 
 info "Đóng gói (1-2 phút)…"
-"$PY" -m PyInstaller tools/r1y.spec --noconfirm --clean >/tmp/r1y-build.log 2>&1 || {
+"$PY" -m PyInstaller --onefile --console --name R1Y-Tool --hidden-import ssl --hidden-import _ssl --hidden-import hashlib --hidden-import http.client --hidden-import urllib.request --collect-submodules encodings --exclude-module tkinter --exclude-module unittest --exclude-module pydoc --exclude-module pdb --noconfirm --clean tools/r1y.py >/tmp/r1y-build.log 2>&1 || {
     err "Đóng gói thất bại. 3 dòng cuối log:"
     tail -3 /tmp/r1y-build.log | sed 's/^/      /'
     exit 1
