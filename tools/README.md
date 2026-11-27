@@ -9,9 +9,13 @@ Có luôn **tùy chọn cập nhật firmware** và **gỡ/khôi phục**.
 
 **Điện thoại Android (Termux)**
 ```sh
+pkg update -y && pkg install -y git python
+git clone https://github.com/BachDaThan/R1-Y && cd R1-Y
 bash tools/termux_setup.sh     # tự cài python/adb/curl nếu thiếu (an toàn)
 bash tools/r1y_termux.sh       # menu riêng: cài fw, cấu hình WiFi, hotspot, AI
 ```
+Chưa cài được adb? Dùng **2b — Cập nhật qua web** (loa tự tải + cài APK).
+Hướng dẫn đầy đủ: [../docs/TERMUX.md](../docs/TERMUX.md)
 
 **Windows** — bấm đúp `tools/r1y.bat`
 
@@ -33,6 +37,7 @@ Menu hiện ra:
 3  Cài bản build trong máy (APK dev)
 4  Cấu hình máy chủ YouTube cho loa
 5  Kiểm tra trạng thái loa
+3b Cập nhật qua web — không cần adb
 6  Cấu hình WiFi nhà cho loa (quét + nối)
 7  Bật phát WiFi (hotspot) từ loa để điện thoại kết nối
 8  Gỡ cài đặt / khôi phục app gốc

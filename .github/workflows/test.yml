@@ -103,6 +103,7 @@ jobs:
         run: |
           python3 tools/r1y.py --help > /dev/null && echo "OK: r1y.py --help"
           echo 9 | python3 tools/r1y.py > /dev/null && echo "OK: menu thoát"
+          python3 tools/r1y.py --help | grep -q webinstall && echo "OK: lệnh webinstall"
 
       - name: Check no secrets in repo
         run: |

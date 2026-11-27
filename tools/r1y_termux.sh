@@ -58,10 +58,16 @@ header
 need_python
 
 if ! command -v adb >/dev/null 2>&1; then
-    info "Chưa có adb — đang tự cài (android-tools)…"
-    pkg install -y android-tools >/tmp/r1y-install.log 2>&1 || true
+    if command -v pkg >/dev/null 2>&1; then
+        info "Chưa có adb — đang tự cài (android-tools)…"
+        pkg install -y android-tools >/tmp/r1y-install.log 2>&1 || true
+    fi
 fi
-command -v adb >/dev/null 2>&1 && ok "adb sẵn sàng" || warn "adb chưa có — vẫn dùng được phần cấu hình web."
+if command -v adb >/dev/null 2>&1; then
+    ok "adb sẵn sàng"
+else
+    warn "Chưa có adb — vẫn cập nhật được firmware qua web (mục 4)."
+fi
 
 # python tool tự lo phần còn lại
 if [ ! -f "$DIR/r1y.py" ]; then
@@ -72,8 +78,9 @@ fi
 # Menu nhanh riêng cho điện thoại (dùng lại r1y.py với tham số)
 while true; do
     printf "\n  ${BOLD}Chọn việc:${N}\n"
-    printf "   1  Cài firmware cho loa (tải APK từ GitHub)\n"
-    printf "   2  Cập nhật firmware\n"
+    printf "   1  Cài firmware cho loa (tải APK từ GitHub, cần adb)\n"
+    printf "   2  Cập nhật firmware (cần adb)\n"
+    printf "   2b Cập nhật qua web — KHÔNG cần adb (loa tự tải + cài)\n"
     printf "   3  Cấu hình WiFi cho loa (quét + nối WiFi nhà)\n"
     printf "   4  Bật chế độ cài đặt (loa phát WiFi)\n"
     printf "   5  Xem trạng thái loa\n"
@@ -100,6 +107,15 @@ while true; do
                 "$PY" "$DIR/r1y.py" update --ip "$IP"
             else
                 "$PY" "$DIR/r1y.py" update
+            fi
+            ;;
+        2b|b|B)
+            printf "  ${Y}?${N} IP loa (xem trong WiFi điện thoại): "
+            read -r IP
+            if [ -z "$IP" ]; then
+                warn "Cần IP loa. Mở Cài đặt WiFi của điện thoại để xem IP."
+            else
+                "$PY" "$DIR/r1y.py" webinstall --ip "$IP"
             fi
             ;;
         3)

@@ -164,12 +164,24 @@ python3 tools/r1y.py config --ip <IP_LOA> --ai-server custom \
 ## Dùng trên điện thoại (Termux)
 
 ```sh
-pkg install git python
+# 1. Cài Termux (từ F-Droid), mở lên rồi dán:
+pkg update -y && pkg install -y git python
+
+# 2. Tải firmware repo
 git clone https://github.com/BachDaThan/R1-Y
 cd R1-Y
-bash tools/termux_setup.sh      # tự cài phần còn thiếu (an toàn)
-bash tools/r1y_termux.sh        # menu riêng cho điện thoại
+
+# 3. Tự chuẩn bị (cài adb/curl nếu thiếu, cấp quyền bộ nhớ)
+bash tools/termux_setup.sh
+
+# 4. Chạy tool
+bash tools/r1y_termux.sh
 ```
+
+Chọn **1** để cài (cần adb), hoặc **2b** để cập nhật qua web (không cần adb —
+loa tự tải và cài), hoặc **3** để cấu hình WiFi nhà cho loa.
+
+📖 Hướng dẫn chi tiết từng bước: **[docs/TERMUX.md](docs/TERMUX.md)**
 
 Tool tự cài `python`, `android-tools` (adb), `curl` nếu thiếu — chỉ dùng `pkg`
 chính thức của Termux, không tải script lạ. Lỗi kỹ thuật được dịch thành gợi ý
@@ -201,6 +213,7 @@ git push origin v1.4.1
 ## Tài liệu
 
 - [Tool cài đặt A→Z](tools/README.md)
+- [Cài bằng điện thoại (Termux)](docs/TERMUX.md)
 - [Hướng dẫn cài đặt](HUONG_DAN_CAI_DAT.md)
 - [Kiến trúc](docs/ARCHITECTURE.md)
 - [Bộ lấy tiếng YouTube](docs/YOUTUBE_RESOLVER.md)

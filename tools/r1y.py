@@ -1163,6 +1163,77 @@ def flow_wifi(args):
                 flow_wifi(args)
 
 
+def flow_webinstall(args):
+    """
+    Cài/cập nhật firmware KHÔNG cần adb: nhờ chính loa tự tải APK từ GitHub
+    và tự cài (loa có quyền root thì cài im lặng, không thì hiện trình cài đặt).
+    Dùng được trên điện thoại khi chưa cài được android-tools.
+    """
+    ip = args.ip or ""
+    if not ip:
+        ip = "192.168.43.1"
+    base = "http://%s:%d" % (ip, WEB_PORT)
+    title("Cập nhật firmware qua web (không cần adb)")
+    info("Loa: %s" % base)
+
+    try:
+        st = http_json(base + "/api/status", timeout=8)
+    except Exception:
+        die("Không mở được %s\n"
+            "  • Điện thoại đã nối cùng WiFi với loa chưa?\n"
+            "  • IP loa đúng chưa? (xem trong Cài đặt WiFi của điện thoại)\n"
+            "  • Loa đang phát WiFi riêng thì dùng 192.168.43.1" % base)
+
+    ok("Loa đang chạy %s v%s" % (st.get("app", "R1-Y"), st.get("version", "?")))
+
+    info("Đang kiểm tra bản mới trên GitHub…")
+    try:
+        chk = http_json(base + "/api/update/check", timeout=40)
+    except Exception as e:
+        die("Loa không kiểm tra được cập nhật: %s" % explain_error(str(e)))
+
+    if not chk.get("hasUpdate"):
+        ok("Đã là bản mới nhất (v%s)." % chk.get("currentVersion", "?"))
+        if not confirm("Cài lại (ghi đè) bản mới nhất?", False):
+            return
+    else:
+        ok("Có bản mới: v%s (đang dùng v%s)"
+           % (chk.get("latestTag", "?"), chk.get("currentVersion", "?")))
+        notes = (chk.get("releaseNotes") or "").strip()
+        if notes:
+            print("  %s%s%s" % (C.DIM, notes[:400].replace("\n", "\n  "), C.RESET))
+
+    if not confirm("Tải và cài ngay trên loa?", True):
+        return
+
+    info("Loa đang tải APK và cài (1-3 phút, đừng tắt loa)…")
+    try:
+        r = http_post_json(base + "/api/update/install", {}, timeout=600)
+    except Exception as e:
+        warn("Yêu cầu bị ngắt giữa chừng (loa có thể đang cài): %s" % explain_error(str(e)))
+        r = {}
+
+    if r.get("ok"):
+        ok(r.get("message") or "Đã cài xong")
+        info("Chờ loa khởi động lại rồi mở: %s" % base)
+        if not confirm("Đợi loa lên lại và kiểm tra?", True):
+            return
+        for i in range(20):
+            time.sleep(6)
+            try:
+                st2 = http_json(base + "/api/status", timeout=5)
+                ok("Loa đã lên lại: v%s" % st2.get("version", "?"))
+                info("Giao diện: %s" % base)
+                return
+            except Exception:
+                sys.stdout.write(".")
+                sys.stdout.flush()
+        print()
+        warn("Loa chưa phản hồi — mở lại %s sau 1 phút." % base)
+    else:
+        err(r.get("error") or "Loa chưa cài được. Thử lại hoặc dùng cách có adb.")
+
+
 def flow_status(args):
     serial, ip = None, args.ip
     try:
@@ -1228,6 +1299,7 @@ def menu():
         ("1", "Cài mới từ đầu (A→Z) — tải APK từ GitHub rồi cài"),
         ("2", "Cập nhật firmware — so với bản mới nhất trên GitHub"),
         ("3", "Cài bản build trong máy (APK dev)"),
+        ("3b", "Cập nhật qua web — không cần adb (loa tự tải + cài)"),
         ("4", "Cấu hình máy chủ YouTube cho loa"),
         ("5", "Kiểm tra trạng thái loa"),
         ("6", "Cấu hình WiFi nhà cho loa (quét + nối)"),
@@ -1252,6 +1324,8 @@ def menu():
                                         music_server=None, yes=False, pre=False,
                                         ai_server=None, ai_url=None, ai_token=None,
                                         audio_quality=None))
+    elif choice in ("3b", "web"):
+        flow_webinstall(argparse.Namespace(ip=None))
     elif choice == "4":
         args = argparse.Namespace(ip=None, resolvers=None, music_server=None, yes=False,
                                   ai_server=None, ai_url=None, ai_token=None, audio_quality=None)
@@ -1279,7 +1353,7 @@ def main():
         epilog="Nguồn firmware: github.com/%s" % REPO)
     ap.add_argument("command", nargs="?", default=None,
                     choices=["install", "update", "status", "config", "uninstall",
-                             "hotspot", "wifi", "menu"],
+                             "hotspot", "wifi", "webinstall", "menu"],
                     help="Việc cần làm (bỏ trống = mở menu)")
     ap.add_argument("--ip", help="IP loa trong WiFi, ví dụ 192.168.2.20")
     ap.add_argument("--apk", help="Dùng file APK chỉ định thay vì tải GitHub")
@@ -1341,6 +1415,8 @@ def main():
             flow_hotspot(args)
         elif cmd == "wifi":
             flow_wifi(args)
+        elif cmd == "webinstall":
+            flow_webinstall(args)
         elif cmd == "uninstall":
             flow_uninstall(args)
     except RuntimeError as e:
