@@ -39,6 +39,13 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install pyinstaller
 
+      - name: Kiểm tra môi trường
+        shell: pwsh
+        run: |
+          python --version
+          python -m PyInstaller --version
+          Get-ChildItem tools | Select-Object Name, Length
+
       - name: Kiểm tra cú pháp tool trước khi đóng gói
         run: python -m py_compile tools/r1y.py
 
@@ -100,7 +107,15 @@ jobs:
           gh release upload $tag "dist/R1Y-Tool-v$env:VER.exe" --clobber
           gh release upload $tag dist/checksums-exe.txt --clobber
 
-      - name: Báo lỗi (nếu có)
+      - name: Báo lỗi chi tiết (đẩy log ra annotation)
         if: failure()
         shell: pwsh
-        run: echo "::error title=BuildExe::Đóng gói .exe thất bại - xem log bước phía trên"
+        run: |
+          $msg = "Không có log"
+          if (Test-Path pyi.log) {
+            $tail = (Get-Content pyi.log -Tail 25) -join " | "
+            $msg = $tail -replace "%", "%25" -replace "`r", "" -replace "`n", " | "
+          }
+          Write-Host "=== pyi.log (25 dòng cuối) ==="
+          if (Test-Path pyi.log) { Get-Content pyi.log -Tail 25 }
+          Write-Host "::error title=PyILog::$msg"
