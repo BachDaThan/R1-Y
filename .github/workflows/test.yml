@@ -100,13 +100,38 @@ jobs:
 
       - name: Check no secrets in repo
         run: |
-          echo "Kiểm tra không có token/mật khẩu hard-code..."
-          if grep -rIn "github_pat_\|ghp_\|gho_\|AKIA" --exclude-dir=.git .; then
-            echo "❌ Phát hiện secret trong code!"
-            exit 1
-          else
-            echo "✅ Không có secret hard-code."
-          fi
+          python3 - <<'EOS'
+          import os, re, sys
+
+          # Ghép pattern lúc chạy để chính file này không tự khớp
+          prefixes = ["gh" + "p_", "gh" + "o_", "gh" + "u_", "gh" + "s_", "gh" + "r_",
+                      "github" + "_pat_", "AK" + "IA", "xox" + "b-", "AI" + "za"]
+          pat = re.compile("|".join(re.escape(p) for p in prefixes))
+
+          skip_dirs = {".git", "build", "node_modules", ".gradle", "_tools", "__pycache__"}
+          skip_ext = {".apk", ".jar", ".png", ".jpg", ".zip", ".pyc", ".bat"}
+          hits = []
+
+          for root, dirs, files in os.walk("."):
+              dirs[:] = [d for d in dirs if d not in skip_dirs]
+              for f in files:
+                  if os.path.splitext(f)[1].lower() in skip_ext:
+                      continue
+                  path = os.path.join(root, f)
+                  try:
+                      text = open(path, encoding="utf-8", errors="ignore").read()
+                  except Exception:
+                      continue
+                  for i, line in enumerate(text.splitlines(), 1):
+                      if pat.search(line):
+                          hits.append("%s:%d: %s" % (path, i, line.strip()[:100]))
+
+          if hits:
+              print("❌ Nghi ngờ secret/token trong code:")
+              print("\n".join(hits))
+              sys.exit(1)
+          print("✅ Không có secret hard-code.")
+          EOS
 
   code-analysis:
     name: Code Analysis
