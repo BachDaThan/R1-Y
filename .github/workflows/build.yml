@@ -8,6 +8,11 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Cần quyền ghi để tạo Release kèm APK khi gắn tag v*
+permissions:
+  contents: write
+  actions: read
+
 jobs:
   build:
     name: Build APK
@@ -185,6 +190,26 @@ jobs:
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Dự phòng — tạo Release bằng gh CLI nếu bước trên lỗi
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          VER: ${{ steps.tag_version.outputs.version }}
+        run: |
+          set -e
+          gh release view "$TAG" >/dev/null 2>&1 && exit 0
+          gh release create "$TAG" \
+            --title "R1-Y $VER" \
+            --notes "R1-Y firmware cho loa Phicomm R1 — phiên bản $VER.
+
+          ### Cài đặt
+          \`\`\`bash
+          python3 tools/r1y.py install --ip <IP_LOA>
+          \`\`\`
+          Tool tự tải APK trong Release này và cài qua ADB WiFi." \
+            release-apk/*.apk checksums/checksums.txt
 
   notify:
     name: Build Status
