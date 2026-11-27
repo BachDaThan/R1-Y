@@ -85,3 +85,21 @@ python3 tools/r1y.py player --ip IP_LOA --action repeat-on
 - **Tạm dừng** giữ nguyên bài, **Phát tiếp** chạy tiếp đúng chỗ dừng.
 - **Ngưng hẳn** dừng và quên bài (bấm **Phát tiếp** sau đó sẽ phát lại từ đầu).
 - **Lặp lại** phát lại đúng bài đang phát khi hết (như YouTube “lặp 1 bài”).
+
+## 6. QUAN TRỌNG: R1 không phát STREAM_MUSIC ra loa ngoài
+
+Đây là nguyên nhân gốc rễ hay bị bỏ qua nhất. Loa Phicomm R1 có cấu hình route
+âm thanh bất thường: **`STREAM_MUSIC` không đi ra loa ngoài**, trong khi mọi thứ
+vẫn báo "đang phát". Các dự án firmware R1 đã kiểm chứng trên phần cứng thật và
+đều chuyển sang `STREAM_SYSTEM`.
+
+Từ **v1.7.6** R1-Y mặc định phát bằng **STREAM_SYSTEM**:
+
+- Tab **Nhạc** → ô **“Đường ra: Hệ thống (STREAM_SYSTEM)”** (mặc định). Đổi sang
+  `music` / `ring` nếu ROM của bạn khác, rồi bấm Phát lại.
+- Khối chẩn đoán hiện **đường ra đang dùng + âm lượng của đúng stream đó**
+  (âm lượng STREAM_SYSTEM và STREAM_MUSIC trên R1 là hai mức riêng biệt).
+- `python3 tools/r1y.py audio --ip IP_LOA` cũng in ra đường ra + âm lượng.
+
+Nếu tiếng bíp **vẫn im** dù đã ở `system` và âm lượng > 0: thử lần lượt `music`, `ring`.
+Ba đường ra này là toàn bộ những gì Android 5.1 trên R1 có.

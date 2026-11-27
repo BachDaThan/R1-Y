@@ -1157,10 +1157,17 @@ def get_apk(source="github", apk_path=None, include_prerelease=False):
 # ----------------------------------------------------------------- cài đặt
 def adb_install(serial, apk_path):
     """
-    Cài APK lên loa. Dùng đúng cách đã được chứng minh trên Phicomm R1:
+    Cài APK lên loa — theo đúng cách R1 cần (đã kiểm chứng trên phần cứng thật
+    bởi nhiều dự án firmware R1):
+
         adb push <apk> /data/local/tmp/
-        adb shell /system/bin/pm install -r /data/local/tmp/<apk>
-    (gọi pm qua đường dẫn tuyệt đối — một số ROM stock thiếu PATH trong shell)
+        adb shell "sh -c 'pm install -r <apk> > ket_qua.txt 2>&1; echo DONE >> ket_qua.txt &'"
+        chờ 10s -> đọc ket_qua.txt
+
+    Vì sao phải chạy NỀN: trên Android 5.1 của R1, `pm install` chạy ở tiền cảnh
+    làm adbd ngắt kết nối giữa lúc cài — đúng hiện tượng "error: closed" mà tool
+    hay gặp. Chạy nền + đọc file kết quả thì không bị ngắt.
+    (vẫn gọi pm qua đường dẫn tuyệt đối vì ROM stock thiếu PATH trong shell)
     """
     import posixpath
     remote_dir = "/data/local/tmp"
@@ -1168,15 +1175,32 @@ def adb_install(serial, apk_path):
     info("Đang chuyển APK lên loa…")
     adb("push", apk_path, remote, timeout=900)
     info("Đang cài…")
-    rc, out = adb("-s", serial, "shell", "/system/bin/pm", "install", "-r", remote,
-                  timeout=900, allow_fail=True)
-    if rc != 0 or "Success" not in out:
-        # thử thêm -t (cho phép APK test-only) rồi đường dẫn pm thường
-        rc, out = adb("-s", serial, "shell", "/system/bin/pm", "install", "-r", "-t",
-                      remote, timeout=900, allow_fail=True)
+    result_file = "/data/local/tmp/r1y_install_result.txt"
+    adb("-s", serial, "shell", "rm", "-f", result_file, quiet=True, allow_fail=True)
+    # chạy pm install Ở NỀN, ghi kết quả ra file — tránh adbd ngắt giữa lúc cài
+    adb("-s", serial, "shell",
+        "sh -c 'pm install -r %s > %s 2>&1; echo DONE >> %s &'"
+        % (remote, result_file, result_file),
+        timeout=60, allow_fail=True, quiet=True)
+    rc, out = 1, ""
+    for _ in range(30):                       # chờ tối đa ~60 giây
+        time.sleep(2)
+        rc, out = adb("-s", serial, "shell", "cat", result_file,
+                      timeout=30, allow_fail=True, quiet=True)
+        if "DONE" in (out or ""):
+            break
+    if "Success" not in (out or ""):
+        # thử lại kiểu cũ (gọi thẳng, có -t) — một số ROM lại cần cách này
+        rc, out2 = adb("-s", serial, "shell", "/system/bin/pm", "install", "-r", remote,
+                       timeout=300, allow_fail=True)
+        out = (out or "") + "\n" + (out2 or "")
+        if "Success" not in (out2 or ""):
+            rc, out3 = adb("-s", serial, "shell", "/system/bin/pm", "install", "-r", "-t",
+                           remote, timeout=300, allow_fail=True)
+            out = out + "\n" + (out3 or "")
     if rc != 0 or "Success" not in out:
         rc, out = adb("-s", serial, "shell", "pm", "install", "-t", "-r", remote,
-                      timeout=900, allow_fail=True)
+                      timeout=300, allow_fail=True)
     if rc != 0 or "Success" not in out:
         warn("pm install lỗi, thử adb install: %s" % out.splitlines()[-1] if out else "")
         rc2, out2 = adb("-s", serial, "install", "-t", "-r", apk_path, timeout=900)
@@ -1191,7 +1215,8 @@ def adb_install(serial, apk_path):
                 "space": "Loa hết dung lượng /data.",
             }.get(reason, "Không rõ lý do (xem log pm ở trên).")
             die("Cài APK thất bại: %s\n%s" % (hint, (out2 or out)[-800:]))
-    adb("-s", serial, "shell", "rm", remote)
+    adb("-s", serial, "shell", "rm", remote, quiet=True, allow_fail=True)
+    adb("-s", serial, "shell", "rm", "-f", result_file, quiet=True, allow_fail=True)
     ok("Đã cài %s" % APP_NAME)
 
 
@@ -1204,6 +1229,31 @@ def grant_permissions(serial):
     for p in perms:
         adb("-s", serial, "shell", "pm", "grant", PACKAGE, p, quiet=True)
     ok("Đã cấp quyền thu âm + bộ nhớ")
+
+
+# Trợ lý gốc Phicomm (Unisound): vẫn chạy ngầm, chiếm ~100MB RAM và mỗi lần app
+# khởi động lại nó có thể GIÀNH MICRO -> loa không nghe được cho tới khi rút điện.
+# Nhiều dự án firmware R1 đều khuyên ẩn nó. Ẩn không xoá, bật lại được.
+UNISOUND_APPS = ["com.phicomm.speaker.device"]
+
+
+def hide_unisound(serial):
+    """Ẩn trợ lý gốc Phicomm để nó không giành micro. Không xoá gì."""
+    hidden = 0
+    for app in UNISOUND_APPS:
+        rc, out = adb("-s", serial, "shell", "pm", "hide", app, quiet=True, allow_fail=True)
+        if "new hidden state: true" in (out or ""):
+            hidden += 1
+    if hidden:
+        ok("Đã ẩn trợ lý gốc Phicomm (Unisound) để nó không giành micro.")
+    return hidden
+
+
+def unhide_unisound(serial):
+    """Bật lại trợ lý gốc Phicomm."""
+    for app in UNISOUND_APPS:
+        adb("-s", serial, "shell", "pm", "unhide", app, quiet=True, allow_fail=True)
+    info("Đã bật lại Unisound (cần rút điện loa rồi cắm lại để nó chạy).")
 
 
 def hide_phicomm(serial):
@@ -1475,7 +1525,7 @@ def has_internet(timeout=4):
 
 
 TOOL_URL = "https://raw.githubusercontent.com/%s/main/tools/r1y.py" % REPO
-TOOL_VERSION = "1.7.5"
+TOOL_VERSION = "1.7.6"
 
 
 def tool_is_outdated():
@@ -1766,6 +1816,10 @@ def flow_install(args):
     total = 7
     step(1, total, "Tắt app Phicomm gốc (giữ lại, không xoá)")
     hide_phicomm(serial)
+    if not args.yes and confirm("Ẩn cả trợ lý gốc Unisound? (nó hay giành micro)", True):
+        hide_unisound(serial)
+    elif args.yes:
+        hide_unisound(serial)
 
     step(2, total, "Kiểm tra bản cũ trên loa")
     old_ver, old_code = device_version(serial)
