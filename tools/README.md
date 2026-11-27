@@ -41,6 +41,7 @@ Menu hiện ra:
 6  Cấu hình WiFi nhà cho loa (quét + nối)
 7  Bật phát WiFi (hotspot) từ loa để điện thoại kết nối
 8  Gỡ cài đặt / khôi phục app gốc
+0  Bật ADB qua WiFi (khi adb báo offline / cổng 5555 chưa mở)
 9  Thoát
 ```
 
