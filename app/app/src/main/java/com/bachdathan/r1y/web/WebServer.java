@@ -70,7 +70,7 @@ public class WebServer extends NanoHTTPD {
         return newFixedLengthResponse(Response.Status.OK, "text/html; charset=utf-8", body);
     }
 
-    private static String readBody(IHTTPSession session) throws IOException {
+    private static String readBody(IHTTPSession session) throws IOException, ResponseException {
         Map<String, String> files = new HashMap<String, String>();
         session.parseBody(files);
         return files.get("postData");
