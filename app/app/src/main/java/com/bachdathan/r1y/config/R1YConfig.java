@@ -269,6 +269,52 @@ public class R1YConfig {
         return prefs.getString("audio_route", "system");
     }
 
+    /**
+     * Gửi micro lên máy chủ AI bằng Opus (mặc định, ĐÚNG giao thức Xiaozhi)
+     * hay bằng PCM base64 (chỉ cho máy chủ tự dựng hiểu kiểu cũ).
+     *
+     * Giao thức websocket của Xiaozhi yêu cầu khung nhị phân là Opus — máy chủ
+     * khai báo "format":"opus". Gửi PCM base64 thì máy chủ không hiểu, im lặng,
+     * hoặc trả lỗi. Đây là lý do nút trên loa "không nói chuyện được với AI".
+     */
+    public boolean isAiUseOpus() {
+        return prefs.getBoolean("ai_use_opus", true);
+    }
+
+    public void setAiUseOpus(boolean opus) {
+        prefs.edit().putBoolean("ai_use_opus", opus).apply();
+    }
+
+    /**
+     * Hệ số khuếch đại tín hiệu mic (1..30). Mic của R1 rất nhỏ, cần gain lớn
+     * mới nghe được giọng nói cách 2-3 m. Mặc định 12: đủ nhạy mà không rít.
+     */
+    public int getMicGain() {
+        int g = prefs.getInt("mic_gain", 12);
+        return g < 1 ? 1 : (g > 30 ? 30 : g);
+    }
+
+    public void setMicGain(int g) {
+        prefs.edit().putInt("mic_gain", g < 1 ? 1 : (g > 30 ? 30 : g)).apply();
+    }
+
+    /**
+     * Tự đoán wake word bằng ngưỡng âm lượng. MẶC ĐỊNH TẮT vì nó kích hoạt
+     * với mọi tiếng động to (tivi, đóng cửa…). Bật lại được nếu muốn thử.
+     */
+    public boolean isAutoWakeEnabled() {
+        return prefs.getBoolean("auto_wake", false);
+    }
+
+    public void setAutoWakeEnabled(boolean on) {
+        prefs.edit().putBoolean("auto_wake", on).apply();
+    }
+
+    /** Wake word người dùng đặt (mặc định 小智). Dùng để nhận diện theo âm lượng. */
+    public String getWakeWordText() {
+        return prefs.getString("wake_word_text", "小智");
+    }
+
     public void setAudioRoute(String r) {
         String v = "music".equals(r) || "ring".equals(r) ? r : "system";
         prefs.edit().putString("audio_route", v).apply();

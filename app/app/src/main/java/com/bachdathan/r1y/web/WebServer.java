@@ -132,6 +132,8 @@ public class WebServer extends NanoHTTPD {
                 return handleAudioTest(session);
             } else if ("/api/audio/status".equals(path)) {
                 return json(200, com.bachdathan.r1y.util.AudioDiag.status(context).toString());
+            } else if ("/api/voice".equals(path)) {
+                return handleVoice(session);
             } else if ("/api/assistant".equals(path)) {
                 return handleAssistant("POST".equals(method));
             } else if ("/pairing-code".equals(path)) {
@@ -500,6 +502,9 @@ public class WebServer extends NanoHTTPD {
             o.put("hotspot_auto_start", config.isHotspotAutoStart());
             o.put("audio_quality", config.getAudioQuality());
             o.put("audio_route", config.getAudioRoute());
+            o.put("mic_gain", config.getMicGain());
+            o.put("auto_wake", config.isAutoWakeEnabled());
+            o.put("ai_use_opus", config.isAiUseOpus());
             o.put("setup_mode", config.isSetupMode());
             o.put("home_wifi_ssid", config.getHomeWifiSsid());
         } catch (Exception ignored) {}
@@ -538,6 +543,9 @@ public class WebServer extends NanoHTTPD {
             if (o.has("hotspot_enabled")) config.setHotspotEnabled(o.optBoolean("hotspot_enabled", false));
             if (o.has("audio_quality")) config.setAudioQuality(o.optString("audio_quality", "high"));
             if (o.has("audio_route")) config.setAudioRoute(o.optString("audio_route", "system"));
+            if (o.has("mic_gain")) config.setMicGain(o.optInt("mic_gain", 12));
+            if (o.has("auto_wake")) config.setAutoWakeEnabled(o.optBoolean("auto_wake", false));
+            if (o.has("ai_use_opus")) config.setAiUseOpus(o.optBoolean("ai_use_opus", true));
             return json(200, "{\"ok\":true}");
         } catch (Exception e) {
             return json(400, "{\"ok\":false,\"error\":\"" + e.getMessage() + "\"}");
@@ -781,6 +789,82 @@ public class WebServer extends NanoHTTPD {
         return json(200, o.toString());
     }
 
+    /**
+     * Điều khiển nói chuyện với trợ lý từ web (không cần bấm nút trên loa).
+     *
+     *   GET  /api/voice                -> trạng thái giao thức + mic
+     *   POST /api/voice?action=talk    -> bắt đầu một lượt nói (hoặc ngắt lời)
+     *   POST /api/voice?action=abort   -> ngắt lời trợ lý
+     *   POST /api/voice?action=text&text=... -> gửi câu gõ tay
+     *   POST /api/voice?action=key&code=66   -> giả lập phím (thử nút trên loa)
+     */
+    private Response handleVoice(NanoHTTPD.IHTTPSession session) {
+        String action = param(session, "action");
+        org.json.JSONObject out = new org.json.JSONObject();
+        try {
+            com.bachdathan.r1y.service.XiaozhiConnectionService conn =
+                com.bachdathan.r1y.core.XiaozhiCore.getInstance().getConnectionService();
+            com.bachdathan.r1y.service.VoiceRecognitionService voice =
+                com.bachdathan.r1y.core.XiaozhiCore.getInstance().getVoiceService();
+
+            if ("talk".equals(action)) {
+                com.bachdathan.r1y.util.VoiceTrigger.toggleTalking(context);
+                out.put("ok", true);
+                out.put("talking", com.bachdathan.r1y.util.VoiceTrigger.talking);
+            } else if ("abort".equals(action)) {
+                if (conn != null) conn.sendAbort();
+                out.put("ok", true);
+            } else if ("text".equals(action)) {
+                String text = param(session, "text");
+                if (conn != null && text != null && !text.trim().isEmpty()) {
+                    conn.sendStartListening(null);
+                    conn.sendTextMessage(text.trim());
+                    out.put("ok", true);
+                } else {
+                    out.put("ok", false);
+                    out.put("error", "Thiếu câu hoặc chưa kết nối máy chủ AI");
+                }
+            } else if ("key".equals(action)) {
+                int code = Integer.parseInt(param(session, "code"));
+                android.view.KeyEvent ev = new android.view.KeyEvent(
+                        android.view.KeyEvent.ACTION_DOWN, code);
+                boolean handled = com.bachdathan.r1y.util.VoiceTrigger.handleKey(
+                        context, code, ev);
+                out.put("ok", true);
+                out.put("handled", handled);
+                out.put("keyName", com.bachdathan.r1y.util.VoiceTrigger.keyName(code));
+            }
+
+            out.put("connected", conn != null && conn.isConnected());
+            if (conn != null) {
+                org.json.JSONObject ps = conn.protocolStatus();
+                java.util.Iterator<String> it = ps.keys();
+                while (it.hasNext()) {
+                    String k = it.next();
+                    out.put(k, ps.get(k));
+                }
+            }
+            out.put("talking", com.bachdathan.r1y.util.VoiceTrigger.talking);
+            out.put("streaming",
+                com.bachdathan.r1y.service.VoiceRecognitionService.streaming);
+            out.put("streamFrames",
+                com.bachdathan.r1y.service.VoiceRecognitionService.streamFrames);
+            out.put("micRestarts",
+                com.bachdathan.r1y.service.VoiceRecognitionService.micRestarts);
+            out.put("micMuted",
+                com.bachdathan.r1y.service.VoiceRecognitionService.micMuted);
+            out.put("lastKeyName",
+                com.bachdathan.r1y.util.VoiceTrigger.lastKeyName);
+            out.put("micGain", new R1YConfig(context).getMicGain());
+        } catch (Throwable t) {
+            try {
+                out.put("ok", false);
+                out.put("error", String.valueOf(t));
+            } catch (Throwable ignored) {}
+        }
+        return json(200, out.toString());
+    }
+
     private Response handleAssistant(boolean start) {
         JSONObject o = new JSONObject();
         try {
@@ -868,7 +952,7 @@ public class WebServer extends NanoHTTPD {
         + ".wifi.sel{border-color:#5b5bd6;background:#1b1e2b}.wifi .nm{flex:1}.wifi .lk{font-size:12px;color:#9aa3b2}"
         + "</style></head><body>"
         + "<div class=\"top\"><div class=\"logo\">&#9635;</div>"
-        + "<div><div class=\"name\">R1-Y</div><div class=\"sub\" id=\"sub\">... &middot; v1.7.6</div></div>"
+        + "<div><div class=\"name\">R1-Y</div><div class=\"sub\" id=\"sub\">... &middot; v1.8.0</div></div>"
         + "<div class=\"ready\">&#9679; S&#7841;n s&#224;ng</div></div>"
         + "<div class=\"card\" id=\"card-setup\">"
         + "<h3>&#128225; C&#224;i &#273;&#7863;t WiFi cho loa</h3>"
@@ -932,7 +1016,14 @@ public class WebServer extends NanoHTTPD {
         + "<div class=\"row\"><button class=\"btn primary\" onclick=\"sndBeep()\">&#128266; Th&#7917; loa (b&#237;p)</button>"
         + "<button class=\"btn danger\" onclick=\"loadMic()\">Ki&#7875;m tra mic</button></div>"
         + "<div class=\"msg\">N&#243;i to g&#7847;n loa r&#7891;i b&#7845;m <b>Ki&#7875;m tra mic</b>: s&#7889; ph&#7843;i nh&#7843;y l&#234;n. N&#7871;u lu&#244;n ~0 th&#236; mic b&#7883; ch&#7863;n quy&#7873;n ho&#7863;c h&#7887;ng.</div>"
-        + "<div class=\"msg\">K&#7871;t n&#7889;i l&#7841;i tr&#7907; l&#253;: <code>adb shell am force-stop com.bachdathan.r1y</code> r&#7891;i m&#7903; l&#7841;i app.</div></div>"
+        + "<div class=\"msg\">K&#7871;t n&#7889;i l&#7841;i tr&#7907; l&#253;: <code>adb shell am force-stop com.bachdathan.r1y</code> r&#7891;i m&#7903; l&#7841;i app.</div>"
+        + "<h3 style=\"margin-top:18px\">&#128172; N&#243;i chuy&#7879;n v&#7899;i tr&#7907; l&#253;</h3>"
+        + "<div class=\"row\"><button class=\"btn primary\" onclick=\"voiceTalk()\">&#127908; N&#243;i (b&#7845;m &#273;&#7875; n&#243;i, b&#7845;m n&#7919;a &#273;&#7875; th&#244;i)</button></div>"
+        + "<input id=\"voiceText\" placeholder=\"Ho&#7863;c g&#245; c&#226;u h&#7887;i r&#7891;i Enter\" style=\"width:100%;margin-top:8px;padding:12px;border-radius:10px;border:1px solid #2a2f3a;background:#0b0d11;color:#e8eaf0;box-sizing:border-box\" onkeydown=\"if(event.key==='Enter'){voiceText()}\">"
+        + "<div class=\"row\"><button class=\"btn\" onclick=\"voiceText()\">G&#7917;i c&#226;u</button>"
+        + "<button class=\"btn danger\" onclick=\"voiceAbort()\">Ng&#7915;ng tr&#7907; l&#253; n&#243;i</button></div>"
+        + "<div class=\"msg\" id=\"voiceInfo\"></div>"
+        + "<div class=\"msg\">N&#7871;u b&#7845;m <b>N&#243;i</b> m&#224; tr&#7907; l&#253; im: xem d&#242;ng <b>k&#234;nh</b> &#7903; tr&#234;n. <code>ch&#432;a m&#7903;</code> = m&#225;y ch&#7911; ch&#432;a tr&#7843; hello (sai URL/token). <code>OK</code> m&#224; v&#7851;n im = mic ho&#7863;c m&#225;y ch&#7911; t&#7915; ch&#7889;i.</div></div>"
         + "<div class=\"card\" id=\"tab-nha\" style=\"display:none\">"
         + "<h3>&#8962; Ph&#225;t WiFi t&#7915; loa</h3>"
         + "<div class=\"msg\">B&#7853;t &#273;&#7875; &#273;i&#7879;n tho&#7841;i k&#7871;t n&#7889;i tr&#7921;c ti&#7871;p v&#224;o loa (kh&#244;ng c&#7847;n router) r&#7891;i m&#7903; giao di&#7879;n n&#224;y.</div>"
@@ -995,6 +1086,24 @@ public class WebServer extends NanoHTTPD {
         + "try{var r=await fetch('/api/audio/status');var j=await r.json();"
         + "var t='M\u1ee9c \u00e2m thanh mic: '+(j.micEnergy!=null?j.micEnergy:'?');"
         + "if(j.micAdvice){t+=' \u2014 '+j.micAdvice;}m.textContent=t;}catch(e){m.textContent='L\u1ed7i: '+e.message;}}"
+        + "async function voiceTalk(){try{await fetch('/api/voice?action=talk',{method:'POST'});}catch(e){}setTimeout(voiceStatus,300);}"
+        + "async function voiceAbort(){try{await fetch('/api/voice?action=abort',{method:'POST'});}catch(e){}setTimeout(voiceStatus,300);}"
+        + "async function voiceText(){var t=document.getElementById('voiceText').value;if(!t){return;}"
+        + "try{var r=await fetch('/api/voice?action=text&text='+encodeURIComponent(t),{method:'POST'});var j=await r.json();"
+        + "if(!j.ok){alert(j.error||'L\u1ed7i');}}catch(e){}document.getElementById('voiceText').value='';setTimeout(voiceStatus,800);}"
+        + "async function voiceStatus(){var b=document.getElementById('voiceInfo');if(!b){return;}"
+        + "try{var r=await fetch('/api/voice');var j=await r.json();"
+        + "var t='K\u00eanh: '+(j.channelOpen?'OK':'ch\u01b0a m\u1edf (ch\u01b0a nh\u1eadn hello c\u1ee7a m\u00e1y ch\u1ee7)')"
+        + "+' | K\u1ebft n\u1ed1i: '+(j.connected?'c\u00f3':'kh\u00f4ng')"
+        + "+' | G\u1eedi PCM: '+(j.useOpus?'Opus':'PCM')"
+        + "+' | Khung g\u1eedi: '+j.sentFrames+' | Nh\u1eadn: '+j.recvOk+' (l\u1ed7i '+j.recvBad+')';"
+        + "if(j.listenState){t+=' | L\u1ec7nh cu\u1ed1i: '+j.listenState;}"
+        + "if(j.lastStt){t+='\\nB\u1ea1n n\u00f3i: '+j.lastStt;}"
+        + "if(j.lastTts){t+='\\nTr\u1ee3 l\u00fd: '+j.lastTts;}"
+        + "if(j.lastKeyName){t+=' | Ph\u00edm cu\u1ed1i: '+j.lastKeyName;}"
+        + "if(j.micRestarts>0){t+=' | Mic t\u1ef1 kh\u1edfi \u0111\u1ed9ng l\u1ea1i: '+j.micRestarts+' l\u1ea7n';}"
+        + "b.style.whiteSpace='pre-wrap';b.textContent=t;}catch(e){}}"
+        + "setInterval(function(){if(document.getElementById('voiceInfo')&&document.getElementById('tab-troly').style.display!=='none'){voiceStatus();}},4000);"
         + "async function loadAi(){var r=await fetch('/api/ai/servers');var j=await r.json();"
         + "var sel=document.getElementById('aiSel');sel.innerHTML='';"
         + "(j.servers||[]).forEach(function(s){var o=document.createElement('option');o.value=s.id;o.textContent=s.name;if(s.id===j.current){o.selected=true;}sel.appendChild(o);});"
@@ -1073,6 +1182,6 @@ public class WebServer extends NanoHTTPD {
         + "try{var r=await fetch('/api/reboot',{method:'POST',body:JSON.stringify({mode:mode,confirm:true})});var j=await r.json();"
         + "document.getElementById('btMsg').textContent=j.message||j.error||'OK';"
         + "}catch(e){document.getElementById('btMsg').textContent='Loa \\u0111ang kh\\u1edfi \\u0111\\u1ed9ng l\\u1ea1i — ch\\u1edd r\\u1ed3i t\\u1ea3i l\\u1ea1i trang.';}}"
-        + "loadRes();loadStatus();showMode();loadAi();loadAct();loadHotspot();loadAudioQ();loadSetup();sndStatus();plState();plRouteLoad();"
+        + "loadRes();loadStatus();showMode();loadAi();loadAct();loadHotspot();loadAudioQ();loadSetup();sndStatus();plState();plRouteLoad();voiceStatus();"
         + "</script></body></html>";
 }

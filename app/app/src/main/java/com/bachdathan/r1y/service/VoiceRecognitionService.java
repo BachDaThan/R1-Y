@@ -51,6 +51,15 @@ public class VoiceRecognitionService extends Service {
     public static volatile long lastMicAt = 0;
     /** Ngưỡng phát hiện "có tiếng" của bản này (ước lượng thô, không phải wake word thật). */
     public static volatile boolean wakeModelReady = false;
+    /** Đang trong một lượt nói (bấm nút / bấm "Nói" trên web) -> đẩy từng khung lên máy chủ. */
+    public static volatile boolean streaming = false;
+    /** Số khung đã gửi lên máy chủ trong lượt này (chẩn đoán trên web). */
+    public static volatile int streamFrames = 0;
+    public static volatile long streamStartedAt = 0;
+    /** Mic đang bị khoá để tránh hát lại tiếng trợ lý (echo). */
+    public static volatile boolean micMuted = false;
+    /** Đếm số lần phải tạo lại AudioRecord (watchdog chống deadlock AudioFlinger). */
+    public static volatile int micRestarts = 0;
     private boolean isRecordingCommand = false;
     private ByteArrayOutputStream commandAudioStream;
     
@@ -254,7 +263,13 @@ public class VoiceRecognitionService extends Service {
                 int shortsRead = audioRecord.read(buffer, 0, buffer.length);
                 
                 if (shortsRead > 0) {
-                    processAudioBuffer(buffer, shortsRead);
+                    if (micMuted) {
+                        // Trợ lý đang nói: bỏ qua để không hát lại tiếng của nó.
+                        lastMicAt = System.currentTimeMillis();
+                    } else {
+                        applyGain(buffer, shortsRead);
+                        processAudioBuffer(buffer, shortsRead);
+                    }
                 } else {
                     Log.w(TAG, "AudioRecord read error: " + shortsRead);
                 }
@@ -268,6 +283,13 @@ public class VoiceRecognitionService extends Service {
      * Xử lý audio buffer
      */
     private void processAudioBuffer(short[] buffer, int length) {
+        if (streaming) {
+            // Đang trong lượt nói: đẩy thẳng lên máy chủ, KHÔNG tự đoán wake word.
+            lastMicEnergy = calculateEnergy(buffer, length);
+            lastMicAt = System.currentTimeMillis();
+            forwardFrame(buffer, length);
+            return;
+        }
         if (isListeningForWakeWord) {
             // Mode 1: Phát hiện wake word
             boolean wakeWordDetected = detectWakeWord(buffer, length);
@@ -295,8 +317,11 @@ public class VoiceRecognitionService extends Service {
         
         // Simple energy-based detection
         // Trong production nên dùng model ML như Porcupine, Snowboy
-        if (energy > ENERGY_THRESHOLD * 3) {
-            Log.d(TAG, "High energy detected, possible wake word: " + energy);
+        // Tự đoán "wake word" chỉ bằng âm lượng là SAI (mọi tiếng động to đều
+        // kích hoạt) nên mặc định TẮT. Cách dùng đúng: bấm nút trên loa hoặc bấm
+        // "Nói" trên trang 8088 -> gửi listen/detect + stream micro.
+        if (new com.bachdathan.r1y.config.R1YConfig(this).isAutoWakeEnabled() && energy > ENERGY_THRESHOLD * 3) {
+            Log.d(TAG, "Năng lượng cao (chế độ tự đoán): " + energy);
             return true;
         }
         
@@ -312,6 +337,76 @@ public class VoiceRecognitionService extends Service {
             sum += buffer[i] * buffer[i];
         }
         return Math.sqrt(sum / length);
+    }
+
+    /**
+     * Khuếch đại tín hiệu mic tại chỗ.
+     *
+     * Mic của R1 rất kém ("4-mic array" nhưng tín hiệu thu rất nhỏ) — các dự án
+     * chạy trên phần cứng thật phải dùng gain lớn (tới 30x) mới nhận được giọng
+     * nói ở khoảng cách 2-3 m. Nếu không khuếch đại, máy chủ ASR nhận toàn im
+     * lặng và trả lời "không nghe rõ".
+     */
+    private void applyGain(short[] buffer, int length) {
+        int gain = new com.bachdathan.r1y.config.R1YConfig(this).getMicGain();
+        if (gain <= 1) return;
+        for (int i = 0; i < length; i++) {
+            int v = buffer[i] * gain;
+            if (v > 32767) v = 32767;
+            else if (v < -32768) v = -32768;
+            buffer[i] = (short) v;
+        }
+    }
+
+    /**
+     * Đẩy một khung PCM thô (16 kHz mono) lên máy chủ AI.
+     *
+     * Gọi trong cùng tiến trình, không qua Intent — 60 khung/giây mà dùng
+     * startService() mỗi khung thì R1 (RK3229, 512MB) sẽ nghẽn.
+     */
+    private void forwardFrame(short[] buffer, int length) {
+        try {
+            com.bachdathan.r1y.core.XiaozhiCore c =
+                com.bachdathan.r1y.core.XiaozhiCore.getInstance();
+            com.bachdathan.r1y.service.XiaozhiConnectionService cs = c.getConnectionService();
+            if (cs != null) {
+                cs.sendMicFrame(buffer, length);
+                streamFrames++;
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "Không gửi được khung mic: " + t);
+        }
+    }
+
+    /**
+     * Watchdog chống deadlock tầng âm thanh của R1.
+     *
+     * AudioFlinger trên Android 5.1 của R1 có thể kẹt vĩnh viễn; khi đó
+     * AudioRecord vẫn "chạy" nhưng read() trả 0 mãi mãi -> loa câm và không
+     * nghe được, phải rút điện. Ta tự phát hiện (quá 6 giây không có khung nào)
+     * rồi tạo lại AudioRecord, có nghỉ 500 ms giữa hai lần tạo để không kích
+     * hoạt đúng cái deadlock đó.
+     */
+    public void checkMicHealth() {
+        if (!isRecording) return;
+        long now = System.currentTimeMillis();
+        if (lastMicAt == 0) {
+            lastMicAt = now;
+            return;
+        }
+        if (now - lastMicAt < 6000) return;
+        Log.w(TAG, "Mic không trả dữ liệu 6s — tạo lại AudioRecord (lần " + (micRestarts + 1) + ")");
+        micRestarts++;
+        restartRecording();
+    }
+
+    private void restartRecording() {
+        try {
+            stopRecording();
+            Thread.sleep(500);          // nghỉ để HAL không deadlock
+        } catch (Throwable ignored) {}
+        lastMicAt = System.currentTimeMillis();
+        startRecording();
     }
     
     /**
@@ -482,6 +577,22 @@ public class VoiceRecognitionService extends Service {
         Log.d(TAG, "Recording stopped");
     }
     
+    /** Bắt đầu một lượt nói: mở cổng đẩy khung lên máy chủ. */
+    public void beginUtterance() {
+        streamFrames = 0;
+        streamStartedAt = System.currentTimeMillis();
+        streaming = true;
+        isListeningForWakeWord = false;
+        Log.i(TAG, "Bắt đầu lượt nói (stream mic lên máy chủ)");
+    }
+
+    /** Kết thúc lượt nói. */
+    public void endUtterance() {
+        streaming = false;
+        isListeningForWakeWord = true;
+        Log.i(TAG, "Kết thúc lượt nói — đã gửi " + streamFrames + " khung");
+    }
+
     /**
      * Pause/Resume listening
      */
