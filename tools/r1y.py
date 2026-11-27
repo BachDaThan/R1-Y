@@ -843,8 +843,12 @@ def check_is_r1(serial):
     sdk = adb_out("-s", serial, "shell", "getprop", "ro.build.version.sdk").strip()
     info("Thiết bị: %s %s (Android API %s)" % (brand, model, sdk))
     low = (brand + " " + model).lower()
-    if "phicomm" in low or "r1" in low:
-        ok("Đúng là loa Phicomm R1.")
+    # Bo mạch thật của loa Phicomm R1 là rk322x-box (Rockchip RK3229, Android 5.1)
+    if "phicomm" in low or "rk322x" in low or low.strip().startswith("r1"):
+        if "rk322x" in low:
+            ok("Đúng là loa Phicomm R1 (bo mạch rk322x, Android 5.1).")
+        else:
+            ok("Đúng là loa Phicomm R1.")
         return True
     warn("Không nhận ra Phicomm R1 (vẫn tiếp tục).")
     return False
@@ -1043,6 +1047,9 @@ def get_apk(source="github", apk_path=None, include_prerelease=False):
     if size < 100 * 1024:
         die("File tải về quá nhỏ (%d bytes) — có thể lỗi mạng." % size)
     ok("Đã tải %.1f MB" % (size / 1048576.0))
+    saved = save_to_cache(path)
+    if saved:
+        info("Đã lưu bản firmware — lần sau cài lại không cần internet.")
     if not apk_is_signed(path):
         warn("APK tải về CHƯA ĐƯỢC KÝ — Android sẽ báo “ứng dụng chưa được cài đặt”.")
         print("  Cách xử lý:")
@@ -1333,8 +1340,113 @@ def show_status(ip, serial=None):
 
 
 # ----------------------------------------------------------------- luồng chính
+def firmware_cache_dir():
+    """Thư mục giữ APK đã tải (dùng lại được khi không có internet)."""
+    base = os.environ.get("HOME") or os.path.expanduser("~")
+    d = os.path.join(base, ".r1y", "firmware")
+    try:
+        os.makedirs(d, exist_ok=True)
+    except Exception:
+        pass
+    return d
+
+
+def save_to_cache(apk_path):
+    """Chép APK đã tải vào ~/.r1y/firmware để lần sau không cần internet."""
+    try:
+        import shutil as _sh
+        d = firmware_cache_dir()
+        dest = os.path.join(d, os.path.basename(apk_path))
+        if os.path.abspath(apk_path) != os.path.abspath(dest):
+            _sh.copy2(apk_path, dest)
+        # giữ tối đa 3 bản gần nhất
+        files = sorted((os.path.join(d, f) for f in os.listdir(d) if f.endswith(".apk")),
+                       key=os.path.getmtime, reverse=True)
+        for old_f in files[3:]:
+            try:
+                os.remove(old_f)
+            except Exception:
+                pass
+        return dest
+    except Exception:
+        return None
+
+
+def cached_firmware():
+    """APK đã tải sẵn trong máy (mới nhất)."""
+    try:
+        d = firmware_cache_dir()
+        files = [os.path.join(d, f) for f in os.listdir(d) if f.endswith(".apk")]
+        files = [f for f in files if os.path.getsize(f) > 100 * 1024]
+        if not files:
+            return None
+        return max(files, key=os.path.getmtime)
+    except Exception:
+        return None
+
+
+def preload_apk(args, quiet=False):
+    """
+    Tải APK về máy TRƯỚC khi nối vào WiFi của loa.
+    WiFi do loa phát KHÔNG có internet, nên phải tải trước — đây là lỗi hay gặp nhất.
+    Trả về đường dẫn file APK đã tải (hoặc None nếu dùng --apk/--source local).
+    """
+    if args.apk:
+        return args.apk
+    if getattr(args, "source", "github") == "local":
+        return None
+
+    # đã tải sẵn trong phiên này? -> dùng lại
+    cached = getattr(args, "_apk_cache", None)
+    if cached and os.path.isfile(cached):
+        if not quiet:
+            info("Dùng lại APK đã tải: %s" % os.path.basename(cached))
+        return cached
+
+    if not quiet:
+        title("Bước 1/2 — Tải firmware về điện thoại trước")
+        info("Cần internet ở bước này (WiFi nhà / 4G).")
+    try:
+        apk, want_ver, rel = get_apk(args.source, None, getattr(args, "pre", False))
+        try:
+            args._apk_cache = apk
+        except Exception:
+            pass
+        return apk
+    except SystemExit:
+        cached = cached_firmware()
+        if cached:
+            print()
+            ok("Không có internet — dùng bản firmware đã tải trước đó:")
+            print("     %s (%.1f MB, %s)" % (os.path.basename(cached),
+                  os.path.getsize(cached) / 1048576.0,
+                  time.strftime("%d/%m/%Y %H:%M", time.localtime(os.path.getmtime(cached)))))
+            if confirm("Dùng bản này để cài?", True):
+                return cached
+        raise
+    except Exception as e:
+        warn("Không tải được firmware: %s" % explain_error(str(e)))
+        return None
+
+
+def explain_no_internet():
+    """Hướng dẫn khi WiFi của loa không có internet."""
+    print()
+    warn("WiFi do loa phát KHÔNG CÓ INTERNET — không tải được firmware từ GitHub.")
+    print("  Cách làm đúng (2 bước):")
+    print("    1. Nối điện thoại về %sWiFi nhà (hoặc 4G)%s" % (C.BOLD, C.RESET))
+    print("       rồi chạy lại: %sr1y%s → chọn 1  (tool tải firmware về trước)" % (C.BOLD, C.RESET))
+    print("    2. Sau khi tải xong, nối vào %sWiFi của loa%s → tool cài ngay" % (C.BOLD, C.RESET))
+    print("       (file firmware đã nằm trong máy, không cần internet nữa)")
+
+
 def flow_install(args):
     banner()
+    # Tải firmware trước (lúc còn internet), rồi mới nối vào WiFi của loa
+    apk_pre = preload_apk(args) if not args.yes else None
+    if apk_pre:
+        args.apk = apk_pre
+
     try:
         serial, ip = connect_device(args.ip, interactive=not args.yes)
     except SystemExit:
@@ -1353,7 +1465,11 @@ def flow_install(args):
         apk_path = local_apk_from_build()
         if not apk_path:
             die("Không thấy APK build trong máy (app/app/build/outputs/apk/...).")
-    apk, want_ver, rel = get_apk(args.source, apk_path, getattr(args, "pre", False))
+    try:
+        apk, want_ver, rel = get_apk(args.source, apk_path, getattr(args, "pre", False))
+    except SystemExit:
+        explain_no_internet()
+        raise
     ip = device_ip(serial, ip)
 
     total = 7

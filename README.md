@@ -135,6 +135,10 @@ python3 tools/r1y.py install --ip <IP_LOA>   # tool tự tải APK từ Releases
 Trên firmware gốc, loa **chỉ mở ADB khi đang phát WiFi riêng**. Đừng cố nối
 ADB qua WiFi nhà — sẽ luôn `offline`.
 
+> ⚠️ **WiFi do loa phát KHÔNG CÓ INTERNET.** Vì vậy tool tải firmware về điện thoại
+> **trước**, rồi mới nối vào WiFi của loa. APK đã tải được lưu ở `~/.r1y/firmware/`
+> để lần sau cài lại **không cần internet**.
+
 **Đúng thứ tự:**
 
 | Bước | Làm gì |
