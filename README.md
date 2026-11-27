@@ -225,7 +225,30 @@ Làm xong một việc, tool hỏi *“Quay lại menu chính?”* — chọn **
 > mua chứng chỉ ký số. Bấm **More info** → **Run anyway**.
 > Hoặc tự build bằng `tools\build_exe.bat` để có file của chính bạn.
 
-## Dùng trên điện thoại (Termux)
+## Dùng trên điện thoại (Android) — chạm 1 cái là chạy
+
+Mở **Termux**, dán **một dòng**:
+
+```bash
+curl -sL https://raw.githubusercontent.com/BachDaThan/R1-Y/main/tools/android/install.sh | bash
+```
+
+Script tự cài python/git/adb, tải firmware về, và **gắn phím `R1-Y` lên thanh
+phím Termux** — từ đó chỉ cần **chạm 1 cái** là menu hiện ra:
+
+```
+   1  Cài mới từ đầu (A→Z) — tải APK từ GitHub rồi cài
+   2  Cập nhật firmware
+   3b Cập nhật qua web — không cần adb
+   ...
+```
+
+Muốn lối tắt ngoài màn hình chính: cài app **Termux:Widget** → giữ màn hình
+chính → Tiện ích → Termux → chọn **R1-Y**.
+
+📖 Chi tiết: **[docs/TERMUX.md](docs/TERMUX.md)**
+
+## Dùng trên điện thoại (Termux) — cách thủ công
 
 ```sh
 # 1. Cài Termux (từ F-Droid), mở lên rồi dán:

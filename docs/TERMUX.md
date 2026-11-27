@@ -19,7 +19,44 @@ Hướng dẫn từng bước, làm được **hoàn toàn trên điện thoại
 > **`R1Y-Tool.exe`** (tải ở mục Releases) — bấm đúp là có menu, không cần cài gì.
 > Trên điện thoại vẫn phải dùng Termux (Android không chạy được file .exe).
 
-## 1. Chuẩn bị Termux (1 lần duy nhất)
+## 1. Cài 1 lần — sau đó **chạm 1 cái là chạy** (khuyến nghị)
+
+Mở Termux, dán **một dòng duy nhất**:
+
+```bash
+curl -sL https://raw.githubusercontent.com/BachDaThan/R1-Y/main/tools/android/install.sh | bash
+```
+
+Script tự làm hết:
+- cài `python`, `git`, `adb` (chỉ dùng `pkg` chính thức, không tải script lạ)
+- tải firmware R1-Y về `~/R1-Y`
+- **gắn phím `R1-Y` lên thanh phím Termux** ← chạm là tool mở
+- tạo lối tắt ngoài màn hình chính (dùng app *Termux:Widget*)
+
+Xong, bạn chạy tool bằng **1 chạm**:
+
+| Cách | Thao tác |
+|---|---|
+| **Nhanh nhất** | Mở Termux → chạm phím **`R1-Y`** ở thanh phím dưới |
+| **Ngoài màn hình chính** | Cài *Termux:Widget* → giữ màn hình chính → Tiện ích → Termux → chọn **R1-Y** |
+| **Gõ tay** | `bash ~/r1-y.sh` |
+
+> Lần đầu vào Termux nếu chưa thấy phím `R1-Y`: bấm **Menu (⋮) → Restart**.
+
+Menu hiện ra đúng như trên máy tính (1 → 8, 3b, 9):
+
+```
+   1  Cài mới từ đầu (A→Z) — tải APK từ GitHub rồi cài
+   2  Cập nhật firmware — so với bản mới nhất trên GitHub
+   3  Cài bản build trong máy (APK dev)
+   3b Cập nhật qua web — không cần adb (loa tự tải + cài)
+   ...
+   9  Thoát
+```
+
+Làm xong 1 việc, tool hỏi *“Quay lại menu chính?”* — chọn **Có** để làm tiếp.
+
+## 1b. Chuẩn bị Termux thủ công (nếu không muốn dùng script)
 
 Mở Termux, dán từng dòng (giữ ngón tay → **Paste**):
 
@@ -56,7 +93,7 @@ Xong. Chạy tool:  python3 tools/r1y.py
 ## 2. Chạy tool
 
 ```bash
-bash tools/r1y_termux.sh
+bash ~/r1-y.sh
 ```
 
 Menu hiện ra:

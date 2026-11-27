@@ -1178,16 +1178,37 @@ def flow_install(args):
     step(1, total, "Tắt app Phicomm gốc (giữ lại, không xoá)")
     hide_phicomm(serial)
 
-    step(2, total, "Gỡ bản cũ (nếu có)")
-    old_ver, _ = device_version(serial)
-    if old_ver:
+    step(2, total, "Kiểm tra bản cũ trên loa")
+    old_ver, old_code = device_version(serial)
+    new_code = (want_ver[1] if want_ver else 0)
+    if not old_ver:
+        info("Chưa có bản cũ — cài mới.")
+    elif new_code and old_code == new_code:
+        # cùng versionCode: cài đè trực tiếp, KHÔNG gỡ → giữ nguyên cài đặt WiFi/AI
+        info("Loa đang chạy cùng bản v%s — cài đè, giữ nguyên cài đặt." % old_ver)
+    elif new_code and old_code and new_code < old_code:
+        warn("Loa đang chạy bản MỚI HƠN (v%s) — sẽ hạ cấp." % old_ver)
+        if not confirm("Vẫn hạ cấp về v%s?" % (want_ver[0] if want_ver else "?"), False):
+            die("Đã dừng.")
         adb("-s", serial, "uninstall", PACKAGE, quiet=True)
         ok("Đã gỡ v%s" % old_ver)
+    elif new_code:
+        info("Đang có v%s — sẽ nâng cấp lên v%s." % (old_ver, want_ver[0]))
     else:
-        info("Chưa có bản cũ.")
+        # không xác định được phiên bản APK (dùng --apk) → cài đè, giữ cài đặt
+        info("Đang có v%s — sẽ cài đè (giữ nguyên cài đặt trên loa)." % old_ver)
 
     step(3, total, "Cài firmware %s" % APP_NAME)
-    adb_install(serial, apk)
+    try:
+        adb_install(serial, apk)
+    except Exception as e:
+        msg = str(e).lower()
+        if "signatures do not match" in msg or "install_failed_inconsistent" in msg or "update incompatible" in msg:
+            warn("Bản cũ khác chữ ký — gỡ rồi cài lại (mất cài đặt trên loa).")
+            adb("-s", serial, "uninstall", PACKAGE, quiet=True)
+            adb_install(serial, apk)
+        else:
+            raise
 
     step(4, total, "Cấp quyền + kiểm tra root")
     grant_permissions(serial)
