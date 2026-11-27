@@ -41,9 +41,12 @@ jobs:
         run: |
           cd app
           set -o pipefail
-          ./gradlew :app:dependencies --configuration debugCompileClasspath 2>&1 | tee /tmp/deps.log
-          echo "--- nanohttpd ---"
-          grep -i nanohttpd /tmp/deps.log || echo "KHONG THAY nanohttpd trong classpath"
+          ./gradlew :app:dependencies --configuration debugCompileClasspath 2>&1 | tee /tmp/deps.log || true
+          RES=$(grep -i nanohttpd /tmp/deps.log | head -3 | tr '\n' '|' || true)
+          FAILED=$(grep -c "FAILED" /tmp/deps.log || true)
+          echo "::notice title=DepsNano::${RES:-KHONG-THAY} failed=${FAILED}"
+          echo "--- toàn bộ cây ---"
+          tail -40 /tmp/deps.log
 
       - name: Build Debug APK
         run: |
