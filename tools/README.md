@@ -116,6 +116,7 @@ python3 tools/r1y.py config --ip 192.168.2.20 --audio-quality high
 | `--ssid` / `--password` / `--on` / `--off` | Cấu hình phát WiFi từ loa |
 | `--pre` | Cho phép bản thử nghiệm (prerelease) |
 | `--force` | Cài đè dù đã ở bản mới nhất |
+| `--reboot` / `--no-reboot` | Khởi động lại loa sau khi cài / chỉ khởi động lại app |
 | `--yes` / `-y` | Không hỏi lại |
 | `--adb <path>` | Dùng adb ở đường dẫn khác |
 
@@ -131,6 +132,12 @@ python3 tools/r1y.py config --ip 192.168.2.20 --audio-quality high
 8. **Bật tự khởi động** (BootReceiver + whitelist pin).
 9. **Khởi động** app và chờ giao diện `http://IP_LOA:8088` lên.
 10. **Cấu hình** máy chủ YouTube (`[]` = tự dò máy chủ công cộng).
+
+## Khởi động lại sau khi cài
+
+Cài xong tool hỏi *"Khởi động lại loa ngay?"* (mặc định **Có**), rồi chờ loa lên
+lại và in IP mới + link web. Muốn bỏ qua: `--no-reboot` hoặc `--reboot` để làm luôn
+không hỏi.
 
 ## Cập nhật firmware
 

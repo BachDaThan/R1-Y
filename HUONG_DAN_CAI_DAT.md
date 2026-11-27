@@ -71,9 +71,16 @@ adb shell pm grant com.bachdathan.r1y android.permission.RECORD_AUDIO
 adb shell am start -n com.bachdathan.r1y/.ui.MainActivity
 ```
 
+## 4b. Khởi động lại loa
+
+Sau khi cài, tool/script **hỏi** có khởi động lại loa không (mặc định Có) và chờ
+loa lên lại (~40-60 giây, cần root để reboot cả máy; không root thì chỉ khởi động
+lại app). Hoặc bấm trên web: tab **Trạng thái** → *Khởi động lại loa*.
+
 ## 5. Cấu hình lần đầu
 
 1. Mở giao diện loa trên trình duyệt: `http://192.168.2.20:8088`
+   (**cổng cố định 8088**; khi loa đang phát WiFi thì là `http://192.168.43.1:8088`)
 2. **Trợ lý**: bấm **Kết nối** trên loa (hoặc trong app), nhập mã kích hoạt
    tại https://xiaozhi.me/activate (hoặc máy chủ Xiaozhi tự đặt).
 3. **Nhạc → Bộ lấy tiếng YouTube**: để nguyên `[]` (mặc định) là loa tự dò

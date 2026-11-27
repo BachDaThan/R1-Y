@@ -96,6 +96,31 @@ Thứ tự thử: mảng của bạn → máy chủ công cộng tự dò (`pipe
 `invidious`: `/api/v1/videos/{id}`) → máy chủ nhạc cuối cùng.
 Xem [docs/YOUTUBE_RESOLVER.md](docs/YOUTUBE_RESOLVER.md).
 
+## Điều khiển loa qua web
+
+Mở: **`http://<IP_LOA>:8088`** — cổng cố định **8088**, không đổi.
+
+- Khi loa ở chế độ cài đặt (phát WiFi): **`http://192.168.43.1:8088`**
+- Khi loa đã vào WiFi nhà: `http://<IP_LOA>:8088` (IP xem ở tab **Trạng thái**,
+  hoặc tool in ra sau khi cài: `python3 tools/r1y.py status --ip <IP>`)
+- Xem nhanh IP: `adb shell ip -f inet addr show wlan0` hoặc `python3 tools/r1y.py`
+
+## Khởi động lại sau khi cài
+
+Cài/cập nhật xong, tool **hỏi** có khởi động lại loa không (mặc định **Có**):
+
+| Cách | Hành vi |
+|---|---|
+| `python3 tools/r1y.py install --ip <IP>` | hỏi → mặc định khởi động lại loa, chờ loa lên lại rồi in IP mới |
+| `... --reboot` | khởi động lại luôn, không hỏi |
+| `... --no-reboot` | chỉ khởi động lại app (nhanh, ~10 giây) |
+| `./scripts/install.sh <IP>` | hỏi (Enter = Có); bỏ qua bằng `REBOOT=no ./scripts/install.sh` |
+| Trên web | tab **Trạng thái** → *Khởi động lại app* hoặc *Khởi động lại loa* |
+
+*Khởi động lại app* = tắt/mở lại R1-Y (~10s, web lên lại ngay).
+*Khởi động lại loa* = reboot cả máy (~40-60s, **cần root**; không root thì tool
+tự hạ xuống chỉ khởi động lại app).
+
 ## Tính năng trên loa (mở `http://<IP_LOA>:8088`)
 
 | Tab | Việc |
