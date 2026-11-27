@@ -90,6 +90,29 @@ Khi bạn có máy chủ riêng (R1-Y server, Tube, LiteTube bridge...), thay `[
 | `POST /api/media/play` | `{"query":"...","source":"youtube"}` |
 | `POST /api/media/play` | `{"query":"...","direct":true}` — đưa từ khóa cho loa tự tìm + tự failover |
 
+## Dán link là phát
+
+Ô **Phát nhạc** ở tab Nhạc nhận:
+
+- Link đầy đủ: `https://www.youtube.com/watch?v=...`, `youtu.be/...`,
+  `youtube.com/shorts/...`, `music.youtube.com/watch?v=...`
+- Hoặc chỉ **video ID** (11 ký tự)
+- Hoặc từ khóa bình thường (`sơn tùng m-tp chạy ngay đi`)
+
+Không phải link thì loa tự tìm, lấy kết quả đầu rồi phát.
+
+## Chất lượng âm thanh
+
+| Chọn | Ý nghĩa |
+|---|---|
+| **Cao nhất (Opus)** — mặc định | Ưu tiên Opus (`audio/webm`, ống 251) bitrate cao nhất, nghe hay nhất |
+| **Tương thích (AAC/m4a)** | Ưu tiên AAC, dùng khi thiết bị không đọc được Opus |
+
+Đổi ở tab **Nhạc** → *Chất lượng âm thanh*, hoặc:
+```sh
+python3 tools/r1y.py config --ip <IP_LOA> --audio-quality high
+```
+
 ## Xử lý sự cố
 
 | Triệu chứng | Cách xử lý |

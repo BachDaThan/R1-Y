@@ -405,7 +405,7 @@ public class ResolverManager {
                 conn.setConnectTimeout(3000);
                 conn.setReadTimeout(4000);
                 conn.setInstanceFollowRedirects(true);
-                conn.setRequestProperty("User-Agent", "R1Y/1.4");
+                conn.setRequestProperty("User-Agent", "R1Y/1.5");
                 int code = conn.getResponseCode();
                 if (code >= 200 && code < 400) return true;
             } catch (Exception ignored) {
@@ -509,7 +509,7 @@ public class ResolverManager {
         try {
             conn.setConnectTimeout(connectMs);
             conn.setReadTimeout(readMs);
-            conn.setRequestProperty("User-Agent", "R1Y/1.4");
+            conn.setRequestProperty("User-Agent", "R1Y/1.5");
             conn.setRequestProperty("Accept", "application/json");
             int code = conn.getResponseCode();
             if (code != 200) throw new Exception("HTTP " + code + " " + urlStr);

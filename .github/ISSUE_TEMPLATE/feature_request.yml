@@ -19,4 +19,4 @@ body:
     id: version
     attributes:
       label: Phiên bản hiện tại
-      placeholder: "v1.4.0"
+      placeholder: "v1.5.0"

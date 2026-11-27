@@ -509,7 +509,7 @@ public class WebServer extends NanoHTTPD {
         + "h3{margin:0 0 10px;font-size:17px}"
         + "</style></head><body>"
         + "<div class=\"top\"><div class=\"logo\">&#9635;</div>"
-        + "<div><div class=\"name\">R1-Y</div><div class=\"sub\" id=\"sub\">... &middot; v1.4.0</div></div>"
+        + "<div><div class=\"name\">R1-Y</div><div class=\"sub\" id=\"sub\">... &middot; v1.5.0</div></div>"
         + "<div class=\"ready\">&#9679; S&#7841;n s&#224;ng</div></div>"
         + "<div class=\"card\">"
         + "<button class=\"btn primary\" onclick=\"connectPhone()\">Cho &#273;i&#7879;n tho&#7841;i k&#7871;t n&#7889;i</button>"

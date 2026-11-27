@@ -45,7 +45,17 @@ giới hạn tuổi (nhờ cookie) / không phụ thuộc máy chủ công cộn
 | `GET /streams/<id>` | Piped (LiteTube) | `audioStreams` xếp bitrate cao nhất |
 | `GET /api/search?q=` | Custom (Tube) | Tìm kiếm custom |
 | `GET /stream/<id>` | Custom | Proxy luồng audio (có Range) |
+| `GET /api/play?q=<link hoặc từ khóa>` | Custom | **Dán link YouTube là phát** |
 | `GET /health` | — | Trạng thái máy chủ + phiên bản yt-dlp |
+
+## Chất lượng âm thanh
+
+`r1y.env`:
+
+```sh
+AUDIO_FORMAT=high    # Opus bitrate cao nhất (mặc định, nghe hay nhất)
+# AUDIO_FORMAT=compat  # AAC/m4a, tương thích tối đa
+```
 
 ## Bảo mật
 

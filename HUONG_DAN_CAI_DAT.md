@@ -65,7 +65,7 @@ cấp quyền, kiểm tra root (cho LED), khởi động app và bật tự ch�
 
 ```sh
 adb connect 192.168.2.20:5555
-adb push R1Y-v1.4.0-release.apk /data/local/tmp/lilyr1.apk
+adb push R1Y-v1.5.0-release.apk /data/local/tmp/lilyr1.apk
 adb shell pm install -t -r /data/local/tmp/lilyr1.apk
 adb shell pm grant com.bachdathan.r1y android.permission.RECORD_AUDIO
 adb shell am start -n com.bachdathan.r1y/.ui.MainActivity

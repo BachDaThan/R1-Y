@@ -27,8 +27,9 @@ Menu hiện ra:
 3  Cài bản build trong máy (APK dev)
 4  Cấu hình máy chủ YouTube cho loa
 5  Kiểm tra trạng thái loa
-6  Gỡ cài đặt / khôi phục app gốc
-7  Thoát
+6  Bật phát WiFi (hotspot) từ loa để điện thoại kết nối
+7  Gỡ cài đặt / khôi phục app gốc
+8  Thoát
 ```
 
 Cần: **Python 3** và **mạng Internet**. Tool tự tải **adb (Android Platform Tools)**
@@ -54,10 +55,32 @@ python3 tools/r1y.py config --ip 192.168.2.20 \
   --resolvers '[{"type":"custom","url":"http://192.168.2.130:8091"}]'
 
 # Cài APK có sẵn (dev)
-python3 tools/r1y.py install --ip 192.168.2.20 --apk ./R1Y-v1.4.0-release.apk
+python3 tools/r1y.py install --ip 192.168.2.20 --apk ./R1Y-v1.5.0-release.apk
 
 # Cài bản vừa build trong repo
 python3 tools/r1y.py install --ip 192.168.2.20 --source local
+```
+
+### Phát WiFi từ loa
+
+```sh
+python3 tools/r1y.py hotspot --ip 192.168.2.20 --ssid R1-Y --password r1y12345678
+python3 tools/r1y.py hotspot --ip 192.168.2.20 --off
+```
+Nối WiFi `R1-Y` trên điện thoại → mở `http://192.168.43.1:8088`.
+
+### Chọn máy chủ AI / chất lượng âm thanh
+
+```sh
+# giữ xiaozhi.me (mặc định)
+python3 tools/r1y.py config --ip 192.168.2.20 --ai-server xiaozhi
+
+# Xiaozhi tự dựng (esp32-server) hoặc URL riêng + token
+python3 tools/r1y.py config --ip 192.168.2.20 --ai-server custom \
+  --ai-url ws://192.168.1.50:8000/xiaozhi/v1/ --ai-token abc123
+
+# âm thanh: high = Opus (mặc định, hay nhất) | compat = AAC/m4a
+python3 tools/r1y.py config --ip 192.168.2.20 --audio-quality high
 ```
 
 ### Tuỳ chọn
@@ -69,6 +92,11 @@ python3 tools/r1y.py install --ip 192.168.2.20 --source local
 | `--source github\|local` | Nguồn APK: bản phát hành GitHub (mặc định) hoặc bản build trong máy |
 | `--resolvers '<json>'` | Mảng JSON resolver lưu vào loa |
 | `--music-server <url>` | Máy chủ nhạc cuối cùng |
+| `--ai-server xiaozhi\|xiaozhi_self\|custom` | Máy chủ AI cho trợ lý |
+| `--ai-url <url>` | URL WebSocket máy chủ AI |
+| `--ai-token <token>` | Token/API key cho máy chủ AI tự dựng |
+| `--audio-quality high\|compat` | `high` = Opus (mặc định), `compat` = AAC |
+| `--ssid` / `--password` / `--on` / `--off` | Cấu hình phát WiFi từ loa |
 | `--pre` | Cho phép bản thử nghiệm (prerelease) |
 | `--force` | Cài đè dù đã ở bản mới nhất |
 | `--yes` / `-y` | Không hỏi lại |
@@ -118,6 +146,6 @@ Gỡ R1-Y và bật lại 4 app Phicomm gốc (`pm unhide`).
 |---|---|
 | "Chưa thấy loa nào" | Bật Gỡ lỗi ADB trên loa; loa và máy tính cùng WiFi; thử cắm USB một lần |
 | `pm install` báo `INSTALL_FAILED_UPDATE_INCOMPATIBLE` | Tool đã tự gỡ bản cũ; nếu vẫn lỗi: `adb uninstall com.bachdathan.r1y` |
-| GitHub báo không có Release | Chủ repo cần push tag `v1.4.0` để CI tạo Release, hoặc dùng `--apk`/`--source local` |
+| GitHub báo không có Release | Chủ repo cần push tag `v1.5.0` để CI tạo Release, hoặc dùng `--apk`/`--source local` |
 | Không mở được giao diện 8088 | Đợi 30 giây; kiểm tra IP loa (có thể đổi); xem log `adb logcat \| grep WebServer` |
 | Máy không có Python (Windows) | Tải python.org, tick "Add python.exe to PATH" |

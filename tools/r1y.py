@@ -561,7 +561,7 @@ def get_apk(source="github", apk_path=None, include_prerelease=False):
     except urllib.error.HTTPError as e:
         if e.code == 404:
             die("Repo %s chưa có bản phát hành (Release) nào.\n"
-                "  → Chủ repo cần tạo Release: mở Actions, hoặc git tag v1.4.0 && git push origin v1.4.0\n"
+                "  → Chủ repo cần tạo Release: mở Actions, hoặc git tag v1.5.0 && git push origin v1.5.0\n"
                 "  → Hoặc chọn mục 3 để cài bản build trong máy." % REPO)
         die("GitHub trả lỗi HTTP %s." % e.code)
     except Exception as e:

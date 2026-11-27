@@ -15,6 +15,13 @@ thật, không còn hàng chục file ghi chú thừa.
   [LiteTube](https://github.com/BachDaThan/LiteTube) (Piped API, luồng audio
   xếp bitrate cao nhất).
 - 📶 **Cài qua cùng WiFi** bằng ADB (`scripts/install.sh`), không cần USB.
+- 📡 **Phát WiFi từ chính loa** (hotspot `R1-Y`): không có router vẫn cài đặt được,
+  điện thoại nối trực tiếp vào loa rồi mở `http://192.168.43.1:8088`.
+- 🤖 **Chọn máy chủ AI**: mặc định `xiaozhi.me`, đổi được sang Xiaozhi tự dựng
+  (esp32-server) hoặc URL riêng + token trong tab **Trợ lý**.
+- 🎧 **Dán link YouTube là phát** — dán link vào ô **Phát nhạc**, loa tự lấy tiếng.
+- 🔊 **Âm thanh chất lượng cao**: mặc định ưu tiên **Opus** bitrate cao nhất,
+  có tùy chọn *Tương thích (AAC/m4a)* nếu thiết bị không đọc được Opus.
 - 🔄 **Nút Cập nhật trong giao diện** (`http://IP_LOA:8088` → Thêm),
   nguồn duy nhất là **GitHub Releases của repo này** (`BachDaThan/R1-Y`).
 - 🤖 **Bot GitHub kiểm tra đàng hoàng**: CI build APK + tạo Release,
@@ -56,6 +63,7 @@ Chi tiết: [HUONG_DAN_CAI_DAT.md](HUONG_DAN_CAI_DAT.md)
 ```
 R1-Y/
 ├── app/                    # Firmware Android (package com.bachdathan.r1y)
+│   ├── hardware/           # LED + HotspotManager (phát WiFi từ loa)
 │   ├── service/            # Xiaozhi, Voice, Audio, LED, WebServer (8088)
 │   ├── youtube/            # ResolverManager, SearchManager
 │   ├── update/             # UpdateManager (GitHub BachDaThan/R1-Y)
@@ -63,7 +71,7 @@ R1-Y/
 │   └── config/             # XiaozhiConfig, R1YConfig
 ├── server/                 # Máy chủ nhạc cho PC (Tube/LiteTube style)
 │   └── r1y_server.py       # Invidious + Piped + custom, yt-dlp
-├── tools/                  # r1y.py — tool A→Z (cài, cập nhật, cấu hình, gỡ)
+├── tools/                  # r1y.py — tool A→Z (cài, cập nhật, cấu hình, hotspot, gỡ)
 ├── scripts/                # install.sh/.bat, update.sh (ADB WiFi)
 ├── docs/                   # Kiến trúc, hướng dẫn resolver
 └── .github/                # CI build/test, bot PR/issue, Dependabot
@@ -83,6 +91,34 @@ thì thay bằng `[{"type":"custom","url":"http://IP_MAY:8091"}]`.
 Thứ tự thử: mảng của bạn → máy chủ công cộng tự dò (`piped`: `/streams/{id}`,
 `invidious`: `/api/v1/videos/{id}`) → máy chủ nhạc cuối cùng.
 Xem [docs/YOUTUBE_RESOLVER.md](docs/YOUTUBE_RESOLVER.md).
+
+## Tính năng trên loa (mở `http://<IP_LOA>:8088`)
+
+| Tab | Việc |
+|---|---|
+| **Trạng thái** | Phiên bản, chế độ YouTube, máy chủ AI, chất lượng âm thanh |
+| **Trợ lý** | Chọn máy chủ AI: `xiaozhi.me` (mặc định) / Xiaozhi tự dựng / URL riêng + token |
+| **Nhạc** | Dán link YouTube hoặc gõ tên bài → **Phát**; chọn chất lượng (Opus/AAC); bộ lấy tiếng YouTube |
+| **Nhà** | **Phát WiFi từ loa** (SSID/mật khẩu), tự bật khi khởi động |
+| **Thêm** | Cập nhật firmware từ GitHub Releases |
+
+### Phát WiFi từ loa
+
+Bật ở tab **Nhà** hoặc:
+```sh
+python3 tools/r1y.py hotspot --ip <IP_LOA> --ssid R1-Y --password r1y12345678
+```
+Điện thoại nối WiFi `R1-Y` rồi mở `http://192.168.43.1:8088`.
+Loa R1 chạy Android 5.1 nên cần root/quyền hệ thống; nếu ROM chặn, tool tự thử
+lệnh root `cmd wifi start-softap` và in hướng dẫn.
+
+### Chọn máy chủ AI
+
+Tab **Trợ lý** → chọn → **Lưu** → khởi động lại app.
+```sh
+python3 tools/r1y.py config --ip <IP_LOA> --ai-server custom \
+  --ai-url ws://192.168.1.50:8000/xiaozhi/v1/ --ai-token <token>
+```
 
 ## Cập nhật
 

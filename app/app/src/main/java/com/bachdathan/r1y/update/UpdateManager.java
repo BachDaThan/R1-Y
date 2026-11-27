@@ -25,7 +25,7 @@ import java.net.URL;
  * Cập nhật firmware từ GitHub (repo BachDaThan/R1-Y).
  *
  * - Kiểm tra: GET https://api.github.com/repos/BachDaThan/R1-Y/releases/latest
- * - So sánh tag (v1.4.0) với version hiện tại của app.
+ * - So sánh tag (v1.5.0) với version hiện tại của app.
  * - Tải APK (asset *.apk) về /sdcard/Download/R1Y-update.apk
  * - Cài: ưu tiên "pm install" qua root (nếu có), ngược lại mở trình cài đặt.
  *
@@ -94,7 +94,7 @@ public class UpdateManager {
         HttpURLConnection conn = (HttpURLConnection) new URL(api).openConnection();
         conn.setConnectTimeout(15000);
         conn.setReadTimeout(15000);
-        conn.setRequestProperty("User-Agent", "R1Y/1.4");
+        conn.setRequestProperty("User-Agent", "R1Y/1.5");
         conn.setRequestProperty("Accept", "application/vnd.github+json");
         int code = conn.getResponseCode();
         if (code != 200) {
@@ -147,7 +147,7 @@ public class UpdateManager {
         HttpURLConnection conn = (HttpURLConnection) new URL(apkUrl).openConnection();
         conn.setConnectTimeout(30000);
         conn.setReadTimeout(60000);
-        conn.setRequestProperty("User-Agent", "R1Y/1.4");
+        conn.setRequestProperty("User-Agent", "R1Y/1.5");
         int code = conn.getResponseCode();
         if (code != 200) throw new Exception("Tải APK HTTP " + code);
 

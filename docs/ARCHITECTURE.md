@@ -55,6 +55,32 @@
 Loa (`SearchManager`) thử từng resolver theo thứ tự, lỗi thì chuyển tiếp theo —
 giống cách Tube/LiteTube tự đổi player client khi lỗi.
 
+## Phát WiFi từ loa (hotspot)
+
+`hardware/HotspotManager.java`:
+
+1. Thử `WifiManager.setWifiApEnabled()` bằng reflection (API ≤ 25, ROM Android TV).
+2. Thử `setWifiApConfiguration()` (một số ROM khác).
+3. Fallback có root: `su -c "cmd wifi start-softap <SSID> wpa2 <pass>"`.
+4. Bật tự động khi khởi động nếu `hotspot_auto_start = true` (BootReceiver).
+
+Điện thoại nối WiFi `R1-Y` → mở `http://192.168.43.1:8088`.
+Web: tab **Nhà** (`GET/POST /api/hotspot`).
+
+## Máy chủ AI (trợ lý)
+
+`config/R1YConfig` giữ preset: `xiaozhi` (mặc định, `wss://xiaozhi.me/v1/ws`),
+`xiaozhi_self` (esp32-server), `custom` (URL riêng + token).
+`XiaozhiConnectionService` lấy URL động từ `getAiUrl()`. Nếu chọn server tùy chỉnh
+và có token dự phòng thì kết nối luôn, **không cần kích hoạt** qua xiaozhi.me.
+Web: tab **Trợ lý** (`GET /api/ai/servers`).
+
+## Âm thanh chất lượng cao
+
+`audio_quality = high` (mặc định) → `ResolverManager` chọn Opus bitrate cao nhất
+(`pickPipedAudio`, Invidious sort theo `bitrate`); `compat` → AAC/m4a.
+Máy chủ PC: `AUDIO_FORMAT=high|compat`.
+
 ## Cập nhật firmware
 
 - Nguồn duy nhất: **GitHub Releases của `BachDaThan/R1-Y`** (repo này).

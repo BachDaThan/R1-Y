@@ -16,7 +16,7 @@ body:
     attributes:
       label: Phiên bản firmware
       description: Xem ở http://IP_LOA:8088 (mục Trạng thái)
-      placeholder: "v1.4.0"
+      placeholder: "v1.5.0"
     validations:
       required: true
   - type: input
