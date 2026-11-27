@@ -42,7 +42,73 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-gradle-
 
+      # ------------------------------------------------------------------
+      # KHOÁ KÝ CỐ ĐỊNH — phải chuẩn bị TRƯỚC khi build.
+      # Trước đây mỗi lần CI chạy lại sinh khoá ký mới → APK mỗi bản một chữ ký
+      # khác nhau → Android từ chối cài đè:
+      #   INSTALL_FAILED_UPDATE_INCOMPATIBLE: signatures do not match
+      #   (pm báo lỗi rồi adb shell đóng → Termux chỉ thấy "error: closed")
+      # Giờ khoá ký được giữ lại giữa các lần build:
+      #   1. Secret R1Y_KEYSTORE_B64 (base64 file .jks) — bền nhất, không mất
+      #   2. actions/cache — tự sinh lần đầu, các lần sau dùng lại
+      # ------------------------------------------------------------------
+      - name: Khôi phục khoá ký đã dùng cho các bản trước
+        uses: actions/cache@v4
+        with:
+          path: ~/.r1y-signing
+          key: r1y-signing-keystore-v2
+          restore-keys: |
+            r1y-signing-keystore-
+
+      - name: Chuẩn bị khoá ký cố định (để cài đè được bản cũ)
+        env:
+          R1Y_KEYSTORE_B64: ${{ secrets.R1Y_KEYSTORE_B64 }}
+          SECRET_STORE_PASS: ${{ secrets.R1Y_STORE_PASS }}
+          SECRET_KEY_ALIAS: ${{ secrets.R1Y_KEY_ALIAS }}
+          SECRET_KEY_PASS: ${{ secrets.R1Y_KEY_PASS }}
+        run: |
+          set -e
+          DIR="$HOME/.r1y-signing"
+          KS="$DIR/r1y-release.jks"
+          mkdir -p "$DIR"
+
+          STORE_PASS="r1y-release-pass"
+          KEY_ALIAS="r1y"
+          KEY_PASS="r1y-release-pass"
+          if [ -n "$SECRET_STORE_PASS" ]; then STORE_PASS="$SECRET_STORE_PASS"; fi
+          if [ -n "$SECRET_KEY_ALIAS" ]; then KEY_ALIAS="$SECRET_KEY_ALIAS"; fi
+          if [ -n "$SECRET_KEY_PASS" ]; then KEY_PASS="$SECRET_KEY_PASS"; fi
+
+          if [ -f "$KS" ]; then
+            echo "Dùng khoá ký đã lưu trong cache."
+          elif [ -n "$R1Y_KEYSTORE_B64" ]; then
+            echo "$R1Y_KEYSTORE_B64" | base64 -d > "$KS"
+            echo "Dùng khoá ký từ secret R1Y_KEYSTORE_B64."
+          else
+            echo "Chưa có khoá ký — tạo mới MỘT lần, các lần build sau dùng lại."
+            keytool -genkeypair -v -keystore "$KS" -storetype JKS \
+              -storepass "$STORE_PASS" -keypass "$KEY_PASS" \
+              -alias "$KEY_ALIAS" -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=R1-Y Release,O=BachDaThan,C=VN"
+          fi
+
+          {
+            echo "R1Y_KEYSTORE=$KS"
+            echo "R1Y_STORE_PASS=$STORE_PASS"
+            echo "R1Y_KEY_ALIAS=$KEY_ALIAS"
+            echo "R1Y_KEY_PASS=$KEY_PASS"
+          } >> "$GITHUB_ENV"
+
+          echo "Chữ ký của khoá đang dùng:"
+          keytool -list -v -keystore "$KS" -storepass "$STORE_PASS" \
+            | grep -E "Alias name|SHA256:" | head -4 || true
+
       - name: Build Debug APK
+        env:
+          R1Y_KEYSTORE: ${{ env.R1Y_KEYSTORE }}
+          R1Y_STORE_PASS: ${{ env.R1Y_STORE_PASS }}
+          R1Y_KEY_ALIAS: ${{ env.R1Y_KEY_ALIAS }}
+          R1Y_KEY_PASS: ${{ env.R1Y_KEY_PASS }}
         run: |
           cd app
           set -o pipefail
@@ -59,21 +125,25 @@ jobs:
             fi
           done
 
-      - name: Bảo đảm có debug.keystore (để ký APK release)
-        run: |
-          KS="$HOME/.android/debug.keystore"
-          if [ ! -f "$KS" ]; then
-            mkdir -p "$HOME/.android"
-            keytool -genkeypair -v -keystore "$KS" -storepass android -keypass android \
-              -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 \
-              -dname "CN=R1-Y Debug,O=BachDaThan,C=VN"
-          fi
-          ls -l "$KS"
-
       - name: Build Release APK
+        env:
+          R1Y_KEYSTORE: ${{ env.R1Y_KEYSTORE }}
+          R1Y_STORE_PASS: ${{ env.R1Y_STORE_PASS }}
+          R1Y_KEY_ALIAS: ${{ env.R1Y_KEY_ALIAS }}
+          R1Y_KEY_PASS: ${{ env.R1Y_KEY_PASS }}
         run: |
           cd app
           ./gradlew assembleRelease --stacktrace
+
+      - name: In chữ ký APK (để biết bản sau có cài đè được không)
+        if: always()
+        run: |
+          APK=$(find app/app/build/outputs/apk/release -name "*.apk" | head -1)
+          if [ -n "$APK" ]; then
+            echo "APK: $APK"
+            keytool -printcert -jarfile "$APK" 2>/dev/null \
+              | grep -E "Owner|SHA256" | head -4 || echo "Không đọc được chữ ký."
+          fi
 
       - name: Get version info
         id: version

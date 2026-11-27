@@ -26,6 +26,8 @@ thật, không còn hàng chục file ghi chú thừa.
 - 🔊 **Âm thanh chất lượng cao + tự hạ cấp**: thang 6 bậc
   *Opus cao → Opus thấp → AAC cao → AAC thấp → codec khác → âm thanh từ video*.
   Bậc nào lỗi thì tự hạ xuống bậc dưới, nên máy chủ công cộng nào cũng lấy được tiếng.
+- 🔐 **Cài đè được giữa các bản** — CI giữ một khoá ký cố định, tool tự xử lý
+  trường hợp khác chữ ký (xem [Vì sao bản mới không cài đè được](#vì-sao-bản-mới-không-cài-đè-được-bản-cũ-signatures-do-not-match)).
 - 🔄 **Nút Cập nhật trong giao diện** (`http://IP_LOA:8088` → Thêm),
   nguồn duy nhất là **GitHub Releases của repo này** (`BachDaThan/R1-Y`).
 - 🤖 **Bot GitHub kiểm tra đàng hoàng**: CI build APK + tạo Release,
@@ -50,6 +52,41 @@ python3 tools/r1y.py update  --ip 192.168.2.20 --yes
 ```
 
 Xem [tools/README.md](tools/README.md).
+
+## Vì sao bản mới không cài đè được bản cũ (signatures do not match)
+
+APK của mỗi bản phải được ký bằng **cùng một khoá** thì Android mới cho cài đè.
+Bản trước đây do CI build nên **mỗi lần chạy sinh một `debug.keystore` mới** →
+bản sau khác chữ ký bản trước → Android báo:
+
+```
+INSTALL_FAILED_UPDATE_INCOMPATIBLE: Package com.bachdathan.r1y signatures do not match
+```
+
+`pm install` gặp lỗi rồi đóng shell giữa lúc cài, nên Termux chỉ thấy
+`error: closed` — nhìn như lỗi mạng, thật ra là lỗi chữ ký.
+
+Từ **v1.7.1** đã sửa hai đầu:
+
+- **CI** giữ lại khoá ký giữa các lần build (`~/.r1y-signing/r1y-release.jks`,
+  lưu bằng `actions/cache`; hoặc bền hơn: secret `R1Y_KEYSTORE_B64` = base64
+  của file `.jks`). Bản **debug** cũng ký bằng đúng khoá đó.
+- **Tool** (`tools/r1y.py`) đọc chữ ký bản đang cài, và nếu bản mới khác chữ ký
+  thì **tự gỡ bản cũ rồi cài lại** (hỏi trước), thay vì cài rồi lỗi giữa đường.
+
+Cài đè không gỡ được chỉ xảy ra với các bản **đã phát hành trước v1.7.1** —
+gỡ một lần, từ đó về sau cài đè bình thường và **giữ nguyên cài đặt WiFi/AI**.
+
+```sh
+# cách 1 — để tool tự làm (khuyến nghị)
+python3 tools/r1y.py install --ip 192.168.43.1
+
+# cách 2 — gỡ tay rồi cài
+adb -s 192.168.43.1:5555 shell pm uninstall com.bachdathan.r1y
+python3 tools/r1y.py install --ip 192.168.43.1
+```
+
+Giữ lại cài đặt khi gỡ (nếu ROM cho phép): `pm uninstall -k com.bachdathan.r1y`.
 
 ## Cài bằng tay (script cũ / ADB)
 

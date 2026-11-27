@@ -290,6 +290,7 @@ def run(cmd, timeout=600, check=False, quiet=False, input_text=None):
 
 # ----------------------------------------------------------------- adb
 ADB = None
+ADB_MAX_CMD_TIMEOUT = 180      # giây — mọi lệnh adb đơn lẻ không chờ lâu hơn
 
 
 def find_adb():
@@ -374,6 +375,11 @@ def download_platform_tools():
 def adb(*args, **kw):
     """Gọi adb. Luôn đặt thời gian chờ để không bị treo trên điện thoại."""
     kw.setdefault("timeout", 60)
+    # pm install trên loa Android 5.1 đôi khi treo và shell đóng giữa lúc chạy
+    # (adb báo "error: closed"). Chờ tối đa 90 giây rồi sang cách khác,
+    # KHÔNG để người dùng đứng im 15 phút như trước.
+    if kw["timeout"] > ADB_MAX_CMD_TIMEOUT:
+        kw["timeout"] = ADB_MAX_CMD_TIMEOUT
     kw.pop("allow_fail", None)
     exe = find_adb()
     if not exe:
@@ -874,6 +880,85 @@ def device_version(serial):
     return (m_name.group(1) if m_name else "?"), (int(m_code.group(1)) if m_code else 0)
 
 
+def install_reason(serial, apk_path):
+    """
+    Vì sao không cài đè được? Chạy `pm install -r` MỘT lần và đọc câu lỗi thật
+    mà Android trả về (tool cũ chỉ thấy "error: closed" của adb vì shell bị
+    đóng giữa lúc pm đang chạy).
+
+    Trả về mã ngắn: "signature" | "downgrade" | "system" | "space" | "" (không rõ)
+    """
+    import posixpath
+    remote = posixpath.join("/data/local/tmp", "__r1y_check.apk")
+    adb("-s", serial, "push", apk_path, remote, timeout=900, quiet=True)
+    rc, out = adb("-s", serial, "shell", "/system/bin/pm", "install", "-r", "-t",
+                  remote, timeout=900, allow_fail=True, quiet=True)
+    adb("-s", serial, "shell", "rm", remote, quiet=True)
+    return classify_install_error(out)
+
+
+def classify_install_error(text):
+    m = (text or "").lower()
+    if "signatures do not match" in m or "install_failed_inconsistent" in m \
+            or "update incompatible" in m or "signature" in m:
+        return "signature"
+    if "downgrade" in m:
+        return "downgrade"
+    if "system" in m or "not allowed" in m or "signature verification" in m:
+        return "system"
+    if "insufficient_storage" in m or "insufficient storage" in m or "no space" in m:
+        return "space"
+    return ""
+
+
+def package_present(serial):
+    """App còn trên loa không (dù pm hide thì vẫn còn)."""
+    rc, out = adb("-s", serial, "shell", "/system/bin/pm", "path", PACKAGE,
+                  quiet=True, allow_fail=True)
+    return "package:" in (out or "")
+
+
+def remove_app(serial):
+    """
+    Gỡ hẳn app khỏi loa — cần khi bản đang cài do robot GitHub build nên ĐỔI
+    KEY KÝ mỗi lần (Android không cho cài đè app khác chữ ký).
+    Trả về True nếu chắc chắn đã sạch.
+    """
+    adb("-s", serial, "shell", "am", "force-stop", PACKAGE, quiet=True, allow_fail=True)
+    if not package_present(serial):
+        return True
+    # -k = giữ lại /data/data (cài đặt WiFi/AI) nếu ROM cho phép; nếu không
+    # gỡ được thì gỡ sạch. Lần cài sau dùng đúng chữ ký mới nên vẫn cài được.
+    for flags in (["-k"], [], ["--user", "0"], ["-k", "--user", "0"]):
+        rc, out = adb("-s", serial, "shell", "/system/bin/pm", "uninstall",
+                      *(flags + [PACKAGE]), timeout=180, allow_fail=True, quiet=True)
+        if "Success" in (out or "") or not package_present(serial):
+            return True
+    # cài vào /data nhưng hệ thống khoá: thử thêm --user 0 rồi gỡ cho mọi user
+    for extra in (["--user", "0"], ["-k", "--user", "0"]):
+        rc, out = adb("-s", serial, "shell", "/system/bin/pm", "uninstall",
+                      *(extra + [PACKAGE]), timeout=180, allow_fail=True, quiet=True)
+        if not package_present(serial):
+            return True
+    return not package_present(serial)
+
+
+def package_signature(serial):
+    """
+    Chữ ký của app đang cài. Android 5.1: `dumpsys package` in ra
+    `signatures=PackageSignatures{... [<hash>]}` → lấy 8 ký tự đầu của hash
+    là đủ để so sánh giữa các bản do robot build.
+    """
+    rc, out = adb("-s", serial, "shell", "/system/bin/dumpsys", "package", PACKAGE,
+                  timeout=120, allow_fail=True, quiet=True)
+    # Android 5.1 (API 22):  signatures=PackageSignatures{2f4b1c3 [a1b2c3d4]}
+    # Android 7+  :           signatures=PackageSignatures{2f4b1c3 [a1b2c3d4, 9e8f...]}
+    m = re.search(r"signatures=\s*PackageSignatures\W*\[([0-9a-fA-F]+)", out or "")
+    if not m:
+        m = re.search(r"signatures=\w*\{[^]]*?\[([0-9a-fA-F]+)", out or "")
+    return m.group(1)[:8].lower() if m else ""
+
+
 def device_ip(serial, fallback=None):
     out = adb_out("-s", serial, "shell", "ip", "-f", "inet", "addr", "show", "wlan0")
     m = re.search(r"inet\s+(\d+\.\d+\.\d+\.\d+)", out)
@@ -1097,7 +1182,15 @@ def adb_install(serial, apk_path):
         rc2, out2 = adb("-s", serial, "install", "-t", "-r", apk_path, timeout=900)
         if rc2 != 0 or "Success" not in out2:
             adb("-s", serial, "shell", "rm", remote)
-            die("Cài APK thất bại:\n%s" % (out2 or out))
+            reason = classify_install_error(out2 or out)
+            hint = {
+                "signature": "Bản đang cài trên loa KHÁC CHỮ KÝ với APK này "
+                             "(Android không cho cài đè). Tool sẽ tự gỡ rồi cài lại.",
+                "downgrade": "APK có versionCode NHỎ HƠN bản trên loa (hạ cấp).",
+                "system": "ROM chặn cài bản không phải bản hệ thống.",
+                "space": "Loa hết dung lượng /data.",
+            }.get(reason, "Không rõ lý do (xem log pm ở trên).")
+            die("Cài APK thất bại: %s\n%s" % (hint, (out2 or out)[-800:]))
     adb("-s", serial, "shell", "rm", remote)
     ok("Đã cài %s" % APP_NAME)
 
@@ -1556,17 +1649,35 @@ def flow_install(args):
         # không xác định được phiên bản APK (dùng --apk) → cài đè, giữ cài đặt
         info("Đang có v%s — sẽ cài đè (giữ nguyên cài đặt trên loa)." % old_ver)
 
+    # Bản do robot GitHub build được ký bằng key tạo mới ở mỗi lần chạy CI,
+    # nên bản mới KHÔNG BAO GIỜ cài đè được bản cũ (Android báo
+    # INSTALL_FAILED_UPDATE_INCOMPATIBLE: signatures do not match).
+    # Biết trước thì gỡ sạch rồi cài, thay vì để pm lỗi giữa đường.
+    old_sig = package_signature(serial)
+    if old_ver and old_sig:
+        info("Chữ ký bản đang cài trên loa: %s…" % old_sig)
+        if old_code and new_code and old_code != new_code:
+            warn("Bản mới được build ở máy khác nên chữ ký KHÁC bản đang cài.")
+            info("Android bắt buộc gỡ bản cũ trước khi cài (mất cài đặt WiFi/AI trên loa,")
+            info("nhưng tool sẽ cài lại + cấu hình lại ở các bước sau).")
+            if confirm("Gỡ v%s rồi cài v%s?" % (old_ver, want_ver[0] if want_ver else "mới"), True):
+                if remove_app(serial):
+                    ok("Đã gỡ sạch v%s khỏi loa." % old_ver)
+                else:
+                    die("Không gỡ được v%s — ROM chặn. Thử: adb shell pm uninstall --user 0 %s"
+                        % (old_ver, PACKAGE))
+
     step(3, total, "Cài firmware %s" % APP_NAME)
     try:
         adb_install(serial, apk)
-    except Exception as e:
-        msg = str(e).lower()
-        if "signatures do not match" in msg or "install_failed_inconsistent" in msg or "update incompatible" in msg:
-            warn("Bản cũ khác chữ ký — gỡ rồi cài lại (mất cài đặt trên loa).")
-            adb("-s", serial, "uninstall", PACKAGE, quiet=True)
-            adb_install(serial, apk)
-        else:
+    except SystemExit:
+        # adb_install đã in lý do; nếu là chữ ký thì gỡ rồi cài lại MỘT lần
+        if not package_present(serial):
             raise
+        warn("Thử lại: gỡ bản cũ rồi cài lại (nguyên nhân thường là khác chữ ký).")
+        if not remove_app(serial):
+            die("Không gỡ được %s để cài lại — ROM chặn gỡ app hệ thống." % PACKAGE)
+        adb_install(serial, apk)
 
     step(4, total, "Cấp quyền + kiểm tra root")
     grant_permissions(serial)
@@ -1650,8 +1761,27 @@ def flow_update(args):
             return
 
     title("Cập nhật firmware")
+    # Cùng lý do như flow_install: bản GitHub build ở CI nên đổi chữ ký mỗi lần.
+    if cur_ver and (not want_ver or version_tuple(cur_ver) != want_ver):
+        warn("Bản trên GitHub được build ở máy khác → chữ ký khác bản đang cài.")
+        info("Android sẽ từ chối cài đè; tool gỡ bản cũ trước (mất cài đặt trên loa,")
+        info("cài lại xong tool cấp lại quyền + cấu hình như bước cài mới).")
+        if confirm("Gỡ v%s rồi cài bản mới?" % cur_ver, True):
+            if remove_app(serial):
+                ok("Đã gỡ sạch v%s." % cur_ver)
+            else:
+                die("Không gỡ được v%s — ROM chặn gỡ." % cur_ver)
+
     step(1, 3, "Cài bản mới")
-    adb_install(serial, apk)
+    try:
+        adb_install(serial, apk)
+    except SystemExit:
+        if not package_present(serial):
+            raise
+        warn("Thử lại: gỡ bản cũ rồi cài lại.")
+        if not remove_app(serial):
+            die("Không gỡ được %s để cài lại." % PACKAGE)
+        adb_install(serial, apk)
     step(2, 3, "Cấp quyền + tự khởi động")
     grant_permissions(serial)
     enable_autostart(serial)
