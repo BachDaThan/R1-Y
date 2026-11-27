@@ -195,6 +195,36 @@ python3 tools/r1y.py config --ip <IP_LOA> --ai-server custom \
   --ai-url ws://192.168.1.50:8000/xiaozhi/v1/ --ai-token <token>
 ```
 
+## Bản .exe — chỉ bấm đúp, không cần cài gì
+
+Không muốn gõ lệnh? Tải **`R1Y-Tool.exe`** là chạy được ngay trên Windows
+(không cần cài Python, không cần mở CMD).
+
+**Lấy file .exe:**
+
+| Cách | Ở đâu |
+|---|---|
+| **Releases** (khuyến nghị) | tab **Releases** → bản mới nhất → tải `R1Y-Tool-vX.Y.Z.exe` |
+| **Actions** (bản mới nhất, chưa cần tag) | tab **Actions** → **Build Tool EXE** → **Run workflow** → mở run → mục **Artifacts** → `R1Y-Tool-EXE` |
+| **Tự build trên máy** | Windows: bấm đúp `tools\build_exe.bat` → file ra ở `dist\R1Y-Tool.exe` |
+
+Bấm đúp vào `.exe` → menu hiện ra:
+
+```
+   1  Cài mới từ đầu (A→Z) — tải APK từ GitHub rồi cài
+   2  Cập nhật firmware — so với bản mới nhất trên GitHub
+   3  Cài bản build trong máy (APK dev)
+   3b Cập nhật qua web — không cần adb (loa tự tải + cài)
+   ...
+```
+
+Làm xong một việc, tool hỏi *“Quay lại menu chính?”* — chọn **Có** để làm tiếp,
+**Không** để thoát.
+
+> Windows SmartScreen có thể cảnh báo *“Windows protected your PC”* vì file chưa
+> mua chứng chỉ ký số. Bấm **More info** → **Run anyway**.
+> Hoặc tự build bằng `tools\build_exe.bat` để có file của chính bạn.
+
 ## Dùng trên điện thoại (Termux)
 
 ```sh

@@ -15,6 +15,10 @@ Hướng dẫn từng bước, làm được **hoàn toàn trên điện thoại
 
 ---
 
+> **Không muốn gõ lệnh trên điện thoại?** Dùng máy tính với bản
+> **`R1Y-Tool.exe`** (tải ở mục Releases) — bấm đúp là có menu, không cần cài gì.
+> Trên điện thoại vẫn phải dùng Termux (Android không chạy được file .exe).
+
 ## 1. Chuẩn bị Termux (1 lần duy nhất)
 
 Mở Termux, dán từng dòng (giữ ngón tay → **Paste**):

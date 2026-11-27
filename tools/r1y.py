@@ -1490,7 +1490,27 @@ def finish(ip, status_info):
 
 
 def menu():
+    """Menu tương tác — chạy xong 1 việc thì quay lại menu."""
     banner()
+    while True:
+        try:
+            _menu_once()
+        except KeyboardInterrupt:
+            print("\nTạm biệt!")
+            return
+        except SystemExit as e:
+            # lỗi trong flow (die) → quay lại menu; người dùng chọn thoát (code 0) → thoát hẳn
+            if e.code in (0, None):
+                return
+        except Exception as e:
+            warn("Có lỗi: %s" % explain_error(str(e)))
+        print()
+        if not confirm("Quay lại menu chính?", True):
+            print("Tạm biệt!")
+            return
+
+
+def _menu_once():
     print("  %sChọn việc cần làm:%s\n" % (C.BOLD, C.RESET))
     items = [
         ("1", "Cài mới từ đầu (A→Z) — tải APK từ GitHub rồi cài"),
@@ -1535,12 +1555,11 @@ def menu():
         flow_hotspot(argparse.Namespace(ip=None, yes=False, on=None, ssid=None, password=None))
     elif choice == "8":
         flow_uninstall(argparse.Namespace(ip=None, yes=False))
-    elif choice in ("9", "wifi"):
+    elif choice in ("9", "q", "quit", "exit", ""):
         print("Tạm biệt!")
-        return
+        sys.exit(0)
     else:
-        print("Tạm biệt!")
-        return
+        warn("Không có mục '%s' — chọn số trong danh sách." % choice)
 
 
 def main():
@@ -1548,7 +1567,7 @@ def main():
     ap = argparse.ArgumentParser(
         description="Tool cài đặt / cập nhật firmware %s cho loa Phicomm R1." % APP_NAME,
         epilog="Nguồn firmware: github.com/%s" % REPO)
-    ap.add_argument("command", nargs="?", default=None,
+    ap.add_argument("command", nargs="?", default="menu",
                     choices=["install", "update", "status", "config", "uninstall",
                              "hotspot", "wifi", "webinstall", "menu"],
                     help="Việc cần làm (bỏ trống = mở menu)")

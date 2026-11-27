@@ -178,3 +178,11 @@ Gỡ R1-Y và bật lại 4 app Phicomm gốc (`pm unhide`).
 | GitHub báo không có Release | Chủ repo cần push tag `v1.5.0` để CI tạo Release, hoặc dùng `--apk`/`--source local` |
 | Không mở được giao diện 8088 | Đợi 30 giây; kiểm tra IP loa (có thể đổi); xem log `adb logcat \| grep WebServer` |
 | Máy không có Python (Windows) | Tải python.org, tick "Add python.exe to PATH" |
+
+**Bản .exe (không cần Python)**
+
+Tải `R1Y-Tool.exe` từ **Releases** hoặc **Actions → Build Tool EXE → Artifacts**,
+rồi bấm đúp. Tự build trên Windows: bấm đúp `tools\build_exe.bat` → `dist\R1Y-Tool.exe`.
+Trên Linux/macOS: `bash tools/build_exe.sh` → `dist/R1Y-Tool`.
+
+**Windows (CMD/PowerShell)**

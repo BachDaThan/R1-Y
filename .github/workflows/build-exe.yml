@@ -1,0 +1,99 @@
+name: Build Tool EXE
+
+# Đóng gói tools/r1y.py thành MỘT file R1Y-Tool.exe (Windows)
+# - Chạy tay: Actions → Build Tool EXE → Run workflow
+# - Tự chạy khi gắn tag v*  → đính .exe vào Release
+on:
+  push:
+    tags: ['v*']
+    branches: [main]
+    paths:
+      - 'tools/**'
+      - '.github/workflows/build-exe.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tools/**'
+      - '.github/workflows/build-exe.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-exe:
+    name: Build R1Y-Tool.exe
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Cài PyInstaller
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pyinstaller
+
+      - name: Kiểm tra cú pháp tool trước khi đóng gói
+        run: python -m py_compile tools/r1y.py
+
+      - name: Đóng gói thành 1 file .exe
+        run: python -m PyInstaller tools/r1y.spec --noconfirm --clean
+
+      - name: Kiểm tra .exe chạy được (in trợ giúp)
+        shell: pwsh
+        run: |
+          if (-not (Test-Path dist/R1Y-Tool.exe)) { throw "Không tạo được dist/R1Y-Tool.exe" }
+          $size = (Get-Item dist/R1Y-Tool.exe).Length
+          Write-Host ("Kích thước: {0:N1} MB" -f ($size / 1MB))
+          .\dist\R1Y-Tool.exe --help | Select-Object -First 8
+
+      - name: Đổi tên + tạo checksum
+        shell: pwsh
+        run: |
+          $ver = "dev"
+          if ($env:GITHUB_REF -like "refs/tags/v*") { $ver = $env:GITHUB_REF -replace "refs/tags/v", "" }
+          Copy-Item dist/R1Y-Tool.exe "dist/R1Y-Tool-v$ver.exe"
+          Get-FileHash "dist/R1Y-Tool-v$ver.exe" -Algorithm SHA256 |
+            ForEach-Object { "$($_.Hash.ToLower())  R1Y-Tool-v$ver.exe" } |
+            Out-File -Encoding ascii dist/checksums-exe.txt
+          Get-Content dist/checksums-exe.txt
+          echo "VER=$ver" >> $env:GITHUB_ENV
+
+      - name: Lưu bản build (.exe) vào Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: R1Y-Tool-EXE
+          path: |
+            dist/R1Y-Tool-v*.exe
+            dist/checksums-exe.txt
+          retention-days: 90
+
+      - name: Đính .exe vào Release (khi gắn tag)
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          # release có thể chưa tạo xong (workflow Build APK chạy song song) → chờ tối đa 5 phút
+          for ($i = 0; $i -lt 30; $i++) {
+            gh release view $tag 2>$null
+            if ($LASTEXITCODE -eq 0) { break }
+            Start-Sleep -Seconds 10
+          }
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $tag --title "R1-Y $env:VER" --notes "Bản phát hành $env:VER"
+          }
+          gh release upload $tag "dist/R1Y-Tool-v$env:VER.exe" --clobber
+          gh release upload $tag dist/checksums-exe.txt --clobber
+
+      - name: Báo lỗi (nếu có)
+        if: failure()
+        shell: pwsh
+        run: echo "::error title=BuildExe::Đóng gói .exe thất bại - xem log bước phía trên"
