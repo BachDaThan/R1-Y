@@ -150,6 +150,9 @@ def explain_error(msg):
         return "Cài đặt bị từ chối — tool đã thử gỡ bản cũ; nếu vẫn lỗi, chọn bản APK khác."
     if "http 404" in m:
         return "Máy chủ không có dữ liệu này (có thể repo chưa có bản phát hành)."
+    if "ssl" in m or "certificate" in m or "eof" in m or "tls" in m:
+        return ("Kết nối bị ngắt khi tải (SSL/TLS) — mạng chặn hoặc yếu. "
+                "Thử lại, hoặc đổi WiFi/4G. Trên Termux có thể cài: pkg install openssl-tool")
     return msg
 
 
@@ -354,8 +357,25 @@ def adb_out(*args, **kw):
 
 
 # ----------------------------------------------------------------- mạng / tải
-def download_bytes(url, name_hint="file.bin", progress=True):
-    """Tải URL về file tạm, trả về đường dẫn."""
+def download_bytes(url, name_hint="file.bin", progress=True, retries=3):
+    """Tải URL về file tạm, trả về đường dẫn. Tự thử lại khi mạng chập chờn."""
+    last = None
+    for attempt in range(1, retries + 1):
+        try:
+            return _download_once(url, name_hint, progress)
+        except Exception as e:
+            last = e
+            msg = str(e).lower()
+            fatal = any(k in msg for k in ("http 404", "http 403", "http 401"))
+            if fatal or attempt == retries:
+                break
+            warn("Tải lỗi (lần %d/%d): %s — thử lại…" % (attempt, retries, explain_error(str(e))))
+            time.sleep(2 * attempt)
+    raise RuntimeError(explain_error(str(last)))
+
+
+def _download_once(url, name_hint="file.bin", progress=True):
+    """Một lần tải."""
     req = urllib.request.Request(url, headers={
         "User-Agent": "r1y-tool/1.4",
         "Accept": "application/vnd.github+json",
@@ -665,9 +685,11 @@ def gh_release(include_prerelease=False):
         assets = r.get("assets") or []
         apk = None
         for a in assets:
-            if a.get("name", "").lower().endswith(".apk") and "debug" not in a.get("name", "").lower():
-                apk = a
-                break
+            name = a.get("name", "").lower()
+            if not name.endswith(".apk") or "debug" in name or "unsigned" in name:
+                continue
+            apk = a
+            break
         if apk is None:
             for a in assets:
                 if a.get("name", "").lower().endswith(".apk"):
@@ -713,8 +735,54 @@ def local_apk_from_build():
     return None
 
 
+def gh_debug_asset(tag):
+    """Tìm file *debug*.apk trong release (nếu repo có đăng kèm)."""
+    url = "https://api.github.com/repos/%s/releases/tags/%s" % (REPO, tag)
+    try:
+        data = http_json(url, timeout=30)
+    except Exception:
+        return None
+    for a in data.get("assets", []):
+        name = a.get("name", "")
+        if name.lower().endswith(".apk") and "debug" in name.lower():
+            return {"tag": tag, "prerelease": False, "apk_name": name,
+                    "apk_url": a["browser_download_url"], "apk_size": a.get("size", 0),
+                    "published": data.get("published_at"), "unsigned": False}
+    return None
+
+
+def apk_is_signed(path):
+    """APK đã ký chưa? Kiểm tra META-INF có .RSA/.DSA/.EC/.SF (chữ ký v1)."""
+    try:
+        import zipfile
+        with zipfile.ZipFile(path) as z:
+            for n in z.namelist():
+                if n.startswith("META-INF/") and n.upper().endswith((".RSA", ".DSA", ".EC", ".SF")):
+                    return True
+    except Exception:
+        return True  # không đọc được thì đừng chặn oan
+    return False
+
+
+def warn_if_unsigned(rel):
+    """APK chưa ký thì Android không cài được — nói rõ và đề xuất bản debug."""
+    if not rel.get("unsigned"):
+        return False
+    warn("Bản APK này CHƯA ĐƯỢC KÝ (unsigned) — Android sẽ từ chối cài.")
+    print("  Lý do: bản release cần keystore để ký, repo chưa cấu hình.")
+    print("  Cách xử lý (chọn 1):")
+    print("    1. Cài bản debug (có sẵn, ký bằng key debug, cài được ngay):")
+    print("       python3 tools/r1y.py install --ip <IP_LOA> --source debug")
+    print("    2. Tự ký: xem docs/TERMUX.md mục “Ký APK release”")
+    return True
+
+
 def get_apk(source="github", apk_path=None, include_prerelease=False):
-    """Trả về (đường dẫn APK, tuple phiên bản, thông tin release|None)."""
+    """
+    Trả về (đường dẫn APK, tuple phiên bản, thông tin release|None).
+    source: github (bản phát hành) | debug (ưu tiên APK debug nếu có) | local
+    """
+    prefer_debug = (source == "debug")
     if source == "local":
         p = apk_path or local_apk_from_build()
         if not p or not os.path.isfile(p):
@@ -749,10 +817,23 @@ def get_apk(source="github", apk_path=None, include_prerelease=False):
             "      python3 tools/r1y.py webinstall --ip <IP_LOA>" % REPO)
 
     ok("Bản mới nhất: v%s%s" % (rel["tag"], " (thử nghiệm)" if rel["prerelease"] else ""))
+    # APK tên có chữ "unsigned" → Android sẽ từ chối cài, cảnh báo ngay
+    rel["unsigned"] = "unsigned" in (rel["apk_name"] or "").lower()
     if rel["apk_size"]:
         info("APK: %s (%.1f MB)" % (rel["apk_name"], rel["apk_size"] / 1048576.0))
     if rel["published"]:
         info("Phát hành: %s" % rel["published"][:10])
+
+    if prefer_debug:
+        dbg = gh_debug_asset(rel["tag"])
+        if dbg:
+            info("Dùng bản DEBUG (đã ký bằng key debug): %s" % dbg["apk_name"])
+            rel = dbg
+        else:
+            warn("Bản phát hành không có APK debug — dùng bản release.")
+
+    if warn_if_unsigned(rel) and not confirm("Vẫn tải và thử cài bản chưa ký?", False):
+        die("Đã dừng. Dùng: --source debug  hoặc  --apk <file.apk>")
 
     info("Đang tải APK…")
     try:
@@ -763,6 +844,13 @@ def get_apk(source="github", apk_path=None, include_prerelease=False):
     if size < 100 * 1024:
         die("File tải về quá nhỏ (%d bytes) — có thể lỗi mạng." % size)
     ok("Đã tải %.1f MB" % (size / 1048576.0))
+    if not apk_is_signed(path):
+        warn("APK tải về CHƯA ĐƯỢC KÝ — Android sẽ báo “ứng dụng chưa được cài đặt”.")
+        print("  Cách xử lý:")
+        print("    • Nhờ chủ repo bật ký release (xem docs/TERMUX.md → “Ký APK release”)")
+        print("    • Hoặc cài bản debug: python3 tools/r1y.py install --ip <IP> --source debug")
+        if not confirm("Vẫn thử cài bản chưa ký?", False):
+            die("Đã dừng.")
     return path, version_tuple(rel["tag"]), rel
 
 
@@ -1466,7 +1554,7 @@ def main():
                     help="Việc cần làm (bỏ trống = mở menu)")
     ap.add_argument("--ip", help="IP loa trong WiFi, ví dụ 192.168.2.20")
     ap.add_argument("--apk", help="Dùng file APK chỉ định thay vì tải GitHub")
-    ap.add_argument("--source", choices=["github", "local"], default="github",
+    ap.add_argument("--source", choices=["github", "debug", "local"], default="github",
                     help="Nguồn APK: github (release) hoặc local (build trong máy)")
     ap.add_argument("--resolvers", help='Mảng JSON resolver, ví dụ \'[{"type":"custom","url":"http://x:8091"}]\'')
     ap.add_argument("--music-server", dest="music_server", help="URL máy chủ nhạc cuối cùng")
