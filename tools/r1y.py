@@ -719,6 +719,15 @@ def connect_device(ip=None, interactive=True):
             info("Thấy loa ở %s (WiFi do loa phát)…" % HOTSPOT_IP)
             if adb_connect_smart(HOTSPOT_IP):
                 return "%s:%d" % (HOTSPOT_IP, ADB_PORT), HOTSPOT_IP
+            warn("Thấy loa nhưng chưa nối được ADB. Loa chỉ nhận MỘT kết nối adb:")
+            print("  • Tắt tool/adb khác đang nối loa (Android Studio, tool khác…)")
+            print("  • Rút điện loa 10 giây, cắm lại, chờ ~1 phút, giữ nút 5 giây rồi chạy lại")
+        else:
+            info("Chưa thấy loa ở %s. Cách cài ĐÚNG với loa còn firmware gốc:" % HOTSPOT_IP)
+            print("  1) Cắm điện, chờ ~1 phút, giữ nút trên đỉnh loa ~5 giây → loa phát WiFi %sPhicomm R1%s"
+                  % (C.BOLD, C.RESET))
+            print("  2) Nối điện thoại/PC vào WiFi đó (tool đã tải firmware trước lúc còn internet)")
+            print("  3) Chạy lại tool: cài NGAY qua %s, xong mới cho loa vào WiFi nhà" % HOTSPOT_IP)
 
     if ip:
         ip = re.sub(r":\d+$", "", ip)
@@ -1440,6 +1449,43 @@ def explain_no_internet():
     print("       (file firmware đã nằm trong máy, không cần internet nữa)")
 
 
+def setup_home_wifi_after_install(ip, interactive=True):
+    """
+    Sau khi cài qua WiFi của loa (192.168.43.1): cho loa vào WiFi nhà.
+    Ưu tiên API của R1-Y (cổng 8088, có quét WiFi), lỗi thì thử API gốc (8989).
+    Trả về IP mới của loa trong WiFi nhà, hoặc None.
+    """
+    title("Cho loa vào WiFi nhà")
+    info("Firmware gốc chỉ mở ADB khi loa phát WiFi riêng → luôn cài TRƯỚC, nối WiFi nhà SAU.")
+    if not interactive:
+        info("Bỏ qua (chế độ --yes). Làm sau: python3 tools/r1y.py wifi --ip %s" % ip)
+        return None
+    if not confirm("Cho loa vào WiFi nhà ngay bây giờ?", True):
+        info("Để sau: nối WiFi của loa rồi chạy  python3 tools/r1y.py wifi --ip %s" % ip)
+        return None
+    try:
+        if web_alive(ip, timeout=3):
+            flow_wifi(argparse.Namespace(ip=ip))
+        else:
+            configure_wifi_stock(host=ip)
+    except SystemExit:
+        warn("Cách 1 chưa được — thử API gốc của loa (cổng 8989)…")
+        try:
+            configure_wifi_stock(host=ip)
+        except SystemExit:
+            return None
+    # WiFi của loa tắt khi loa vào WiFi nhà → máy phải nối lại WiFi nhà rồi dò IP
+    print()
+    warn("Loa vừa chuyển sang WiFi nhà → điện thoại/PC của bạn cũng phải NỐI LẠI WiFi nhà.")
+    if confirm("Đã nối lại WiFi nhà? Tool sẽ tự dò IP loa", True):
+        new_ip = scan_for_loa_ip()
+        if new_ip:
+            ok("Loa ở %s → http://%s:%d" % (new_ip, new_ip, WEB_PORT))
+            return new_ip
+        warn("Chưa dò thấy loa. Xem IP trong trang quản lý router rồi mở http://IP_LOA:8088")
+    return None
+
+
 def flow_install(args):
     banner()
     # Tải firmware trước (lúc còn internet), rồi mới nối vào WiFi của loa
@@ -1535,6 +1581,18 @@ def flow_install(args):
                       audio_quality=getattr(args, "audio_quality", None))
     else:
         warn("Không lấy được IP loa — mở giao diện bằng tay để cấu hình.")
+
+    # Đang cài qua WiFi do loa phát (192.168.43.1): cài xong phải cho loa vào WiFi nhà,
+    # và KHÔNG reboot trước đó (reboot xong loa không còn WiFi riêng, mất cả ADB lẫn mạng).
+    on_hotspot = (ip == HOTSPOT_IP) or str(serial).startswith(HOTSPOT_IP)
+    if on_hotspot:
+        home_ip = setup_home_wifi_after_install(ip, interactive=not args.yes)
+        if home_ip:
+            ip = home_ip
+            st = wait_web(ip, 20) or st
+        elif getattr(args, "reboot", None) is None:
+            args.reboot = False
+            warn("Loa chưa vào WiFi nhà → bỏ qua khởi động lại (để còn dùng được WiFi của loa).")
 
     # Bước 8: khởi động lại loa (mặc định hỏi; --yes thì theo --reboot/--no-reboot)
     want_reboot = getattr(args, "reboot", None)
@@ -1661,13 +1719,13 @@ def configure_wifi_stock(ssid=None, password=None, host=None):
             r.read()
         ok("Đã gửi cấu hình WiFi (%s) tới loa." % ssid)
         info("Loa sẽ tự nối WiFi nhà sau ~10-20 giây và TẮT WiFi riêng.")
-        info("Sau đó tìm IP mới của loa rồi cài firmware:")
-        print("    1) r1y  → chọn 5 (kiểm tra trạng thái, tool tự dò IP)")
-        print("    2) r1y  → chọn 1 (cài firmware)")
+        warn("Lưu ý: khi loa vào WiFi nhà, firmware gốc KHÔNG mở ADB nữa.")
+        print("    Nếu chưa cài R1-Y: giữ nút 5 giây cho loa phát WiFi lại, rồi chọn 1 (cài qua 192.168.43.1).")
+        print("    Nếu đã cài R1-Y: mở http://IP_LOA:8088 là dùng được.")
         return True
     except Exception as e:
         warn("Không gửi được tới %s: %s" % (url, explain_error(str(e))))
-        print("  • Điện thoại đã nối WiFi do loa phát chưa? (tên kiểu Phicomm_R1_XXXX)")
+        print("  • Điện thoại đã nối WiFi do loa phát chưa? (tên Phicomm R1)")
         print("  • Thử mở http://%s:8989 bằng trình duyệt để kiểm tra" % host)
         return False
 
@@ -1745,9 +1803,7 @@ def flow_wifi(args):
         if r.get("ip"):
             print("\n  %sGiao diện loa:%s %s%s%s"
                   % (C.BOLD, C.RESET, C.CYAN, r.get("webUrl"), C.RESET))
-            info("Giờ loa chung mạng với máy — cài firmware:")
-            print("     %spython3 tools/r1y.py install --ip %s%s"
-                  % (C.BOLD, r.get("ip"), C.RESET))
+            info("Loa đã vào WiFi nhà. Chưa cài R1-Y? Giữ nút 5 giây cho loa phát WiFi lại rồi cài qua 192.168.43.1.")
     else:
         err(r.get("message") or "Không kết nối được")
         if "mật khẩu" in (r.get("message") or "").lower():
