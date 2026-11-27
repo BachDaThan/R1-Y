@@ -33,15 +33,20 @@ Script tự làm hết:
 - **gắn phím `R1-Y` lên thanh phím Termux** ← chạm là tool mở
 - tạo lối tắt ngoài màn hình chính (dùng app *Termux:Widget*)
 
-Xong, bạn chạy tool bằng **1 chạm**:
+Xong, bạn chạy tool bằng:
 
 | Cách | Thao tác |
 |---|---|
-| **Nhanh nhất** | Mở Termux → chạm phím **`R1-Y`** ở thanh phím dưới |
-| **Ngoài màn hình chính** | Cài *Termux:Widget* → giữ màn hình chính → Tiện ích → Termux → chọn **R1-Y** |
-| **Gõ tay** | `bash ~/r1-y.sh` |
+| **Nhanh (2 chạm)** | Mở Termux → chạm phím **`r1y`** trên thanh phím → bấm **Enter** |
+| **1 chạm thật sự** | Cài app *Termux:Widget* (F-Droid) → giữ màn hình chính → **Tiện ích** → **Termux** → chọn **R1-Y** |
+| **Gõ tay** | `r1y` (ngắn) hoặc `bash ~/r1-y.sh` |
 
-> Lần đầu vào Termux nếu chưa thấy phím `R1-Y`: bấm **Menu (⋮) → Restart**.
+> Lần đầu vào Termux nếu chưa thấy phím `r1y`: bấm **Menu (⋮) → Restart**.
+
+> ⚠️ **Vì sao không gắn được lệnh vào phím?**
+> Termux giới hạn: phím trên thanh phím (`extra-keys`) **chỉ gõ chữ vào dòng lệnh**,
+> không cho chạy lệnh. Vì vậy phím `r1y` chỉ gõ sẵn chữ `r1y` — bạn chạm phím rồi
+> **Enter** là xong. Muốn **chạm 1 lần chạy luôn** thì dùng **Termux:Widget** (cách 2).
 
 Menu hiện ra đúng như trên máy tính (1 → 8, 3b, 9):
 
