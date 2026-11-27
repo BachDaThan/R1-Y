@@ -40,7 +40,19 @@ jobs:
       - name: Build Debug APK
         run: |
           cd app
-          ./gradlew assembleDebug --stacktrace
+          set -o pipefail
+          ./gradlew assembleDebug --stacktrace 2>&1 | tee /tmp/gradle-debug.log
+
+      - name: Báo lỗi Gradle (nếu có)
+        if: always()
+        run: |
+          for f in /tmp/gradle-debug.log; do
+            [ -s "$f" ] || continue
+            if grep -qE "FAILURE|error:|Could not|What went wrong" "$f"; then
+              MSG=$(grep -E "FAILURE|error:|Could not|What went wrong|Caused by|> " -A2 "$f" | head -c 3000 | tr '\n' '|')
+              echo "::error title=GradleLog::${MSG}"
+            fi
+          done
 
       - name: Build Release APK
         run: |
