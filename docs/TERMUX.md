@@ -129,6 +129,17 @@ Chọn **1**, nhập IP loa (hoặc Enter để tự quét):
 Tool sẽ tự: kết nối ADB WiFi → tải APK từ GitHub Releases → cài → cấp quyền →
 bật tự khởi động → hỏi có khởi động lại loa không → in IP + link web.
 
+### ⚠️ WiFi của loa không có internet
+
+Loa phát WiFi riêng nhưng **không có mạng ra ngoài**. Nên:
+
+1. **Tải firmware trước** khi còn internet (WiFi nhà / 4G): chạy `r1y` → chọn 1,
+   tool tải APK về `~/.r1y/firmware/` rồi mới nối vào loa.
+2. Nếu tool báo *"Không gọi được GitHub API: No address associated with hostname"* →
+   đúng là đang mất internet. Nối về WiFi nhà rồi chạy lại.
+3. Đã tải một lần rồi thì lần sau tool tự dùng lại bản trong `~/.r1y/firmware/`,
+   **không cần internet nữa**.
+
 ### Cách B — Chưa có adb (nhờ loa tự cài)
 
 Nếu Termux không cài được `android-tools` (một số máy chặn), vẫn cập nhật được:
