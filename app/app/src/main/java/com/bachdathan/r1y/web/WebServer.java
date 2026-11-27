@@ -77,8 +77,9 @@ public class WebServer extends NanoHTTPD {
     }
 
     private static String param(IHTTPSession session, String key) {
-        Map<String, String> p = session.getParameters();
-        List<String> v = p.get(key);
+        // NanoHTTPD 2.3.1: getParameters() -> Map<String, List<String>>
+        Map<String, List<String>> p = session.getParameters();
+        List<String> v = p == null ? null : p.get(key);
         return (v != null && !v.isEmpty()) ? v.get(0) : "";
     }
 
