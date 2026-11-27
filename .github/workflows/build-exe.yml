@@ -65,7 +65,19 @@ jobs:
           if (-not (Test-Path dist/R1Y-Tool.exe)) { throw "Không tạo được dist/R1Y-Tool.exe" }
           $size = (Get-Item dist/R1Y-Tool.exe).Length
           Write-Host ("Kích thước: {0:N1} MB" -f ($size / 1MB))
-          .\dist\R1Y-Tool.exe --help | Select-Object -First 8
+          # chặn trường hợp file rỗng / build lỗi một nửa
+          if ($size -lt 3MB) { throw "File .exe quá nhỏ ($size bytes) - build không đủ" }
+
+          Write-Host "--- chạy: R1Y-Tool.exe --help ---"
+          $out = & .\dist\R1Y-Tool.exe --help 2>&1 | Out-String
+          $code = $LASTEXITCODE
+          Write-Host $out
+          Write-Host "exit code: $code"
+
+          # argparse in trợ giúp ra stdout rồi thoát 0; nhưng nếu .exe lỗi thật thì code != 0
+          if ($code -ne 0) { throw "R1Y-Tool.exe --help trả mã lỗi $code" }
+          if ($out -notmatch "install") { throw "R1Y-Tool.exe không in ra trợ giúp như mong đợi" }
+          Write-Host "OK: .exe chạy được và in trợ giúp"
 
       - name: Đổi tên + tạo checksum
         shell: pwsh
