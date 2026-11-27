@@ -1475,7 +1475,7 @@ def has_internet(timeout=4):
 
 
 TOOL_URL = "https://raw.githubusercontent.com/%s/main/tools/r1y.py" % REPO
-TOOL_VERSION = "1.7.4"
+TOOL_VERSION = "1.7.5"
 
 
 def tool_is_outdated():
@@ -1972,6 +1972,15 @@ def flow_audio(args):
         warn("Loa đang tưởng có tai nghe cắm vào (âm thanh bị dồn sang đó).")
     if st.get("bluetoothA2dp"):
         warn("Âm thanh đang đi qua Bluetooth.")
+    if st.get("opusSupported") is not None:
+        if st.get("opusSupported"):
+            ok("Loa có bộ giải mã Opus.")
+        else:
+            warn("Loa KHÔNG có bộ giải mã Opus/WebM — chuyện bình thường với Android 5.1.")
+            print("     → App đã tự ưu tiên AAC/m4a. Nếu vẫn im, đặt chất lượng 'Tương thích'.")
+        if st.get("audioCodecs"):
+            print("     Codec âm thanh loa đọc được: %s"
+                  % ", ".join(sorted(st.get("audioCodecs").keys())))
     if st.get("micEnergy") is not None:
         me = st.get("micEnergy")
         info("Mức mic gần nhất: %s" % me)
@@ -2010,6 +2019,72 @@ def flow_audio(args):
                     warn("Không phát được: %s" % r.get("error"))
             except Exception as e:
                 warn("Lỗi thử phát: %s" % e)
+
+
+def flow_player(args):
+    """
+    Điều khiển phát nhạc trên loa: tạm dừng / phát tiếp / ngưng hẳn / lặp lại / xem đang phát gì.
+    Dùng API /api/player của bản v1.7.5 trở lên.
+    """
+    banner()
+    ip = args.ip or scan_for_loa_ip() or ask("IP loa", "")
+    if not ip:
+        die("Chưa có IP loa. Ví dụ: python3 tools/r1y.py player --ip 192.168.2.20")
+    base = "http://%s:%d" % (ip, WEB_PORT)
+    title("Điều khiển phát nhạc — loa %s" % ip)
+
+    def show():
+        j = http_json(base + "/api/player", timeout=10)
+        if j.get("title"):
+            info("Đang phát: %s" % j.get("title"))
+        elif j.get("playing"):
+            info("Đang phát (chưa rõ tên bài)")
+        else:
+            info("Chưa phát bài nào.")
+        if j.get("paused"):
+            warn("Đang TẠM DỪNG.")
+        info("Lặp lại: %s | âm lượng: %s" % ("BẬT" if j.get("repeat") else "TẮT", j.get("volume")))
+        return j
+
+    st = show()
+    if args.action:
+        acts = {"pause": "pause", "resume": "resume", "stop": "stop",
+                "repeat-on": "repeat&on=1", "repeat-off": "repeat&on=0"}
+        act = acts.get(args.action, args.action)
+        j = http_post(base + "/api/player?action=" + act, "")
+        ok(j.get("message") or str(j))
+        print()
+        show()
+        return
+
+    while True:
+        print()
+        print("   1) Tạm dừng")
+        print("   2) Phát tiếp")
+        print("   3) Ngưng hẳn bài này")
+        print("   4) Bật/tắt lặp lại")
+        print("   5) Làm mới")
+        print("   0) Xong")
+        c = ask("Chọn", "0")
+        try:
+            if c == "1":
+                ok(http_post(base + "/api/player?action=pause", "").get("message", "OK"))
+            elif c == "2":
+                ok(http_post(base + "/api/player?action=resume", "").get("message", "OK"))
+            elif c == "3":
+                ok(http_post(base + "/api/player?action=stop", "").get("message", "OK"))
+            elif c == "4":
+                cur = http_json(base + "/api/player", timeout=10).get("repeat")
+                j = http_post(base + "/api/player?action=repeat&on=" + ("0" if cur else "1"), "")
+                ok(j.get("message", "OK"))
+            elif c == "5":
+                pass
+            else:
+                return
+        except Exception as e:
+            warn("Lệnh không chạy được: %s" % e)
+            return
+        show()
 
 
 def flow_hotspot(args):
@@ -2400,6 +2475,7 @@ def _menu_once():
         ("4", "Cấu hình máy chủ YouTube cho loa"),
         ("5", "Kiểm tra trạng thái loa"),
         ("5b", "Chẩn đoán âm thanh — loa không ra tiếng / trợ lý không nói"),
+        ("5c", "Điều khiển nhạc — tạm dừng / phát tiếp / ngưng / lặp lại"),
         ("6", "Cấu hình WiFi nhà cho loa (quét + nối)"),
         ("7", "Bật phát WiFi (hotspot) từ loa để điện thoại kết nối"),
         ("8", "Gỡ cài đặt / khôi phục app gốc"),
@@ -2411,6 +2487,10 @@ def _menu_once():
         print("   %s%-2s%s %s" % (C.CYAN, k, C.RESET, t))
     print()
     choice = ask("Nhập số", "1")
+
+    if choice == "5c":
+        flow_player(argparse.Namespace(ip=None, action=None))
+        return
 
     if choice == "5b":
         flow_audio(argparse.Namespace(ip=None, no_sound_test=False))
@@ -2467,7 +2547,8 @@ def main():
         epilog="Nguồn firmware: github.com/%s" % REPO)
     ap.add_argument("command", nargs="?", default="menu",
                     choices=["install", "update", "status", "config", "uninstall",
-                             "hotspot", "wifi", "webinstall", "adbwifi", "audio", "menu"],
+                             "hotspot", "wifi", "webinstall", "adbwifi", "audio",
+                             "player", "menu"],
                     help="Việc cần làm (bỏ trống = mở menu)")
     ap.add_argument("--ip", help="IP loa trong WiFi, ví dụ 192.168.2.20")
     ap.add_argument("--apk", help="Dùng file APK chỉ định thay vì tải GitHub")
@@ -2495,6 +2576,8 @@ def main():
     ap.add_argument("--no-reboot", dest="reboot", action="store_false",
                     help="Không khởi động lại loa sau khi cài")
     ap.add_argument("--yes", "-y", action="store_true", help="Không hỏi lại (dùng cho script/CI)")
+    ap.add_argument("--action", choices=["pause", "resume", "stop", "repeat-on", "repeat-off"],
+                    help="(player) làm 1 việc rồi thoát, không mở menu điều khiển")
     ap.add_argument("--no-sound-test", dest="no_sound_test", action="store_true",
                     help="(audio) chỉ kiểm tra âm lượng/mic, không thử phát nhạc")
     ap.add_argument("--adb", help="Đường dẫn adb nếu không có trong PATH")
@@ -2535,6 +2618,8 @@ def main():
             flow_webinstall(args)
         elif cmd == "audio":
             flow_audio(args)
+        elif cmd == "player":
+            flow_player(args)
         elif cmd == "adbwifi":
             flow_adb_wifi(args)
         elif cmd == "uninstall":
