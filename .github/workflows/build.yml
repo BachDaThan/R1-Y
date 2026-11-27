@@ -43,15 +43,6 @@ jobs:
           set -o pipefail
           ./gradlew assembleDebug --stacktrace 2>&1 | tee /tmp/gradle-debug.log
 
-      - name: Đăng log lỗi lên PR (gỡ sau khi build xanh)
-        if: failure() && github.event_name == 'pull_request'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          BODY=$(tail -c 40000 /tmp/gradle-debug.log 2>/dev/null || echo "khong co log")
-          printf '### Gradle log\n\n```\n%s\n```\n' "$BODY" > /tmp/body.md
-          gh pr comment ${{ github.event.pull_request.number }} --body-file /tmp/body.md || true
-
       - name: Báo lỗi Gradle (nếu có)
         if: always()
         run: |
