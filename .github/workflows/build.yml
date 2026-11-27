@@ -37,19 +37,6 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-gradle-
 
-      - name: Kiểm tra phụ thuộc (debug dependency tree)
-        run: |
-          cd app
-          set -o pipefail
-          ./gradlew :app:dependencies --configuration debugCompileClasspath 2>&1 | tee /tmp/deps.log || true
-          RES=$(grep -i nanohttpd /tmp/deps.log | head -3 | tr '\n' '|' || true)
-          FAILED=$(grep -c "FAILED" /tmp/deps.log || true)
-          echo "::notice title=DepsNano::${RES:-KHONG-THAY} failed=${FAILED}"
-          echo "--- class trong jar nanohttpd ---"
-          JAR=$(find ~/.gradle/caches -name "nanohttpd-2.3.1.jar" | head -1)
-          CLS=$(unzip -l "$JAR" 2>/dev/null | grep -E "NanoHTTPD\.class|IHTTPSession\.class|Response\.class" | awk '{print $4}' | head -5 | tr '\n' ' ')
-          echo "::notice title=NanoJar::${JAR:-KHONG-THAY-JAR} classes=${CLS:-none}"
-
       - name: Build Debug APK
         run: |
           cd app
