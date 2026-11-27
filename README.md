@@ -108,6 +108,17 @@ python3 tools/r1y.py install --ip 192.168.43.1
 
 Giữ lại cài đặt khi gỡ (nếu ROM cho phép): `pm uninstall -k com.bachdathan.r1y`.
 
+## Bấm nút trên loa để nói chuyện với trợ lý AI
+
+Từ **v1.8.0**, nút trên loa hoạt động: bấm một lần là nói, bấm lần nữa là thôi
+(hoặc tự thôi sau 15 giây). App nói **đúng giao thức Xiaozhi** (`type: hello` /
+`listen` / `abort`) và tự **giải mã Opus** bằng Concentus vì Android 5.1 không có
+codec Opus. Trang 8088 tab **Trợ lý** có nút **Nói**, ô gõ câu, và dòng chẩn đoán
+cho biết kênh audio đã mở chưa, gửi/nhận bao nhiêu khung, phím cuối là mã gì.
+Chi tiết + bảng chẩn đoán: `docs/TRO_LY_KHONG_NOI.md`.
+
+CLI: `python3 tools/r1y.py voice --ip IP_LOA` (menu **5d**).
+
 ## Loa R1 không phát STREAM_MUSIC
 
 Loa Phicomm R1 **không đưa `STREAM_MUSIC` ra loa ngoài** — đây là lý do phổ biến nhất

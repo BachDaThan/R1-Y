@@ -103,3 +103,9 @@ Từ **v1.7.6** R1-Y mặc định phát bằng **STREAM_SYSTEM**:
 
 Nếu tiếng bíp **vẫn im** dù đã ở `system` và âm lượng > 0: thử lần lượt `music`, `ring`.
 Ba đường ra này là toàn bộ những gì Android 5.1 trên R1 có.
+
+## 7. Trợ lý AI không trả lời (khác với "loa không ra tiếng")
+
+Nếu **nhạc phát bình thường** mà bấm nút trên loa không nói chuyện được với trợ
+lý, đó là một chuỗi lỗi khác (giao thức + codec Opus + phím chưa được nối). Xem
+riêng: `docs/TRO_LY_KHONG_NOI.md`.

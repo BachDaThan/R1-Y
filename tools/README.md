@@ -199,3 +199,17 @@ rồi bấm đúp. Tự build trên Windows: bấm đúp `tools\build_exe.bat` �
 Trên Linux/macOS: `bash tools/build_exe.sh` → `dist/R1Y-Tool`.
 
 **Windows (CMD/PowerShell)**
+
+## Nói chuyện với trợ lý AI (v1.8.0)
+
+```
+python3 tools/r1y.py voice --ip 192.168.2.20                     # menu
+python3 tools/r1y.py voice --ip 192.168.2.20 --action talk       # bấm "nói"
+python3 tools/r1y.py voice --ip 192.168.2.20 --action abort      # ngắt lời
+python3 tools/r1y.py voice --ip 192.168.2.20 --action text --text "xin chào"
+python3 tools/r1y.py voice --ip 192.168.2.20 --action key --code 66   # dò mã phím
+```
+
+Lệnh này in ra: kênh audio đã mở chưa, số khung Opus đã gửi/nhận, số lần mic tự
+khởi động lại, và tên phím cuối cùng loa gửi. Đây là cách nhanh nhất để biết lỗi
+nằm ở giao thức, ở codec, ở micro hay ở nút bấm. Xem `docs/TRO_LY_KHONG_NOI.md`.

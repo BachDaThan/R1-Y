@@ -82,6 +82,7 @@ import time
 import zipfile
 import io
 import urllib.error
+import urllib.parse
 import urllib.request
 
 # ----------------------------------------------------------------- cấu hình chung
@@ -2075,6 +2076,104 @@ def flow_audio(args):
                 warn("Lỗi thử phát: %s" % e)
 
 
+def flow_voice(args):
+    """
+    Nói chuyện với trợ lý AI + soi giao thức (v1.8.0).
+
+    Đây là công cụ để trả lời dứt điểm câu "bấm nút loa không nói chuyện được":
+    nó in ra kênh audio đã mở chưa, đã gửi bao nhiêu khung Opus, máy chủ trả về
+    bao nhiêu khung, và mic có bị khoá/hỏng không.
+    """
+    banner()
+    ip = args.ip or scan_for_loa_ip() or ask("IP loa", "")
+    if not ip:
+        die("Chưa có IP loa. Ví dụ: python3 tools/r1y.py voice --ip 192.168.2.20")
+    base = "http://%s:%d" % (ip, WEB_PORT)
+    title("Trợ lý AI — loa %s" % ip)
+
+    def status():
+        j = http_json(base + "/api/voice", timeout=10)
+        if j.get("error"):
+            warn("Lỗi: %s" % j["error"])
+            return j
+        if not j.get("connected"):
+            warn("Chưa kết nối máy chủ AI: %s" % (j.get("url") or "?"))
+        elif not j.get("channelOpen"):
+            warn("Đã nối WebSocket nhưng máy chủ CHƯA trả hello "
+                 "-> giao thức/token/URL sai.")
+        else:
+            ok("Kênh audio đã mở (session %s, %s Hz)" %
+               (j.get("sessionId") or "?", j.get("serverRate")))
+        info("Gửi lên: %s | khung gửi: %s | khung nhận: %s (lỗi %s)" % (
+            "Opus" if j.get("useOpus") else "PCM",
+            j.get("sentFrames"), j.get("recvOk"), j.get("recvBad")))
+        if j.get("micRestarts"):
+            warn("Mic đã tự khởi động lại %s lần (tầng âm thanh bị kẹt)" % j["micRestarts"])
+        if j.get("lastKeyName"):
+            info("Phím cuối loa gửi: %s" % j["lastKeyName"])
+        if j.get("lastStt"):
+            info("Bạn nói: %s" % j["lastStt"])
+        if j.get("lastTts"):
+            info("Trợ lý: %s" % j["lastTts"])
+        return j
+
+    st = status()
+    if args.action:
+        if args.action == "talk":
+            j = http_post(base + "/api/voice?action=talk", "")
+            ok("Đã %s lượt nói." % ("BẮT ĐẦU" if j.get("talking") else "KẾT THÚC"))
+        elif args.action == "abort":
+            http_post(base + "/api/voice?action=abort", "")
+            ok("Đã ngắt lời trợ lý.")
+        elif args.action == "text":
+            if not args.text:
+                die("Cần --text \"câu hỏi\"")
+            j = http_post(base + "/api/voice?action=text&text=" +
+                          urllib.parse.quote(args.text), "")
+            ok("Đã gửi câu." if j.get("ok") else ("Lỗi: %s" % j.get("error")))
+        elif args.action == "key":
+            code = args.code if getattr(args, "code", None) else 66
+            j = http_post(base + "/api/voice?action=key&code=%d" % code, "")
+            ok("Đã gửi phím %s (%s)" % (code, j.get("keyName")))
+        print()
+        status()
+        return
+
+    while True:
+        print()
+        print("   1) Bấm NÓI (thử như bấm nút trên loa) — bấm lần nữa để thôi")
+        print("   2) Ngắt lời trợ lý")
+        print("   3) Gửi một câu gõ tay")
+        print("   4) Thử một mã phím (để dò nút trên loa)")
+        print("   5) Làm mới trạng thái")
+        print("   0) Xong")
+        c = ask("Chọn", "0")
+        if c == "1":
+            j = http_post(base + "/api/voice?action=talk", "")
+            ok("Đang nói…" if j.get("talking") else "Đã dừng.")
+        elif c == "2":
+            http_post(base + "/api/voice?action=abort", "")
+            ok("Đã ngắt lời.")
+        elif c == "3":
+            t = ask("Câu hỏi", "")
+            if t:
+                http_post(base + "/api/voice?action=text&text=" + urllib.parse.quote(t), "")
+                ok("Đã gửi.")
+        elif c == "4":
+            info("Mã thường gặp: 66=ENTER, 23=DPAD_CENTER, 85=MEDIA_PLAY_PAUSE, "
+                 "79=HEADSETHOOK, 84=SEARCH, 231=VOICE_ASSIST")
+            code = ask("Mã phím", "66")
+            try:
+                j = http_post(base + "/api/voice?action=key&code=%d" % int(code), "")
+                ok("Đã gửi %s -> %s" % (code, j.get("keyName")))
+            except ValueError:
+                warn("Mã phím phải là số.")
+        elif c == "5":
+            status()
+        elif c == "0":
+            return
+
+
 def flow_player(args):
     """
     Điều khiển phát nhạc trên loa: tạm dừng / phát tiếp / ngưng hẳn / lặp lại / xem đang phát gì.
@@ -2530,6 +2629,7 @@ def _menu_once():
         ("5", "Kiểm tra trạng thái loa"),
         ("5b", "Chẩn đoán âm thanh — loa không ra tiếng / trợ lý không nói"),
         ("5c", "Điều khiển nhạc — tạm dừng / phát tiếp / ngưng / lặp lại"),
+        ("5d", "Trợ lý AI — nói chuyện, soi giao thức, dò mã phím nút trên loa"),
         ("6", "Cấu hình WiFi nhà cho loa (quét + nối)"),
         ("7", "Bật phát WiFi (hotspot) từ loa để điện thoại kết nối"),
         ("8", "Gỡ cài đặt / khôi phục app gốc"),
@@ -2544,6 +2644,10 @@ def _menu_once():
 
     if choice == "5c":
         flow_player(argparse.Namespace(ip=None, action=None))
+        return
+
+    if choice == "5d":
+        flow_voice(argparse.Namespace(ip=None, action=None, text=None, code=None))
         return
 
     if choice == "5b":
@@ -2602,7 +2706,7 @@ def main():
     ap.add_argument("command", nargs="?", default="menu",
                     choices=["install", "update", "status", "config", "uninstall",
                              "hotspot", "wifi", "webinstall", "adbwifi", "audio",
-                             "player", "menu"],
+                             "player", "voice", "menu"],
                     help="Việc cần làm (bỏ trống = mở menu)")
     ap.add_argument("--ip", help="IP loa trong WiFi, ví dụ 192.168.2.20")
     ap.add_argument("--apk", help="Dùng file APK chỉ định thay vì tải GitHub")
@@ -2630,8 +2734,13 @@ def main():
     ap.add_argument("--no-reboot", dest="reboot", action="store_false",
                     help="Không khởi động lại loa sau khi cài")
     ap.add_argument("--yes", "-y", action="store_true", help="Không hỏi lại (dùng cho script/CI)")
-    ap.add_argument("--action", choices=["pause", "resume", "stop", "repeat-on", "repeat-off"],
-                    help="(player) làm 1 việc rồi thoát, không mở menu điều khiển")
+    ap.add_argument("--action",
+                    choices=["pause", "resume", "stop", "repeat-on", "repeat-off",
+                             "talk", "abort", "text", "key"],
+                    help="(player) pause/resume/stop/repeat-on/repeat-off | "
+                         "(voice) talk/abort/text/key — làm 1 việc rồi thoát")
+    ap.add_argument("--text", help="(voice --action text) câu cần gửi cho trợ lý")
+    ap.add_argument("--code", type=int, help="(voice --action key) mã phím cần giả lập, vd 66")
     ap.add_argument("--no-sound-test", dest="no_sound_test", action="store_true",
                     help="(audio) chỉ kiểm tra âm lượng/mic, không thử phát nhạc")
     ap.add_argument("--adb", help="Đường dẫn adb nếu không có trong PATH")
@@ -2672,6 +2781,10 @@ def main():
             flow_webinstall(args)
         elif cmd == "audio":
             flow_audio(args)
+        elif cmd == "voice":
+            flow_voice(argparse.Namespace(
+                ip=getattr(args, "ip", None), action=getattr(args, "action", None),
+                text=getattr(args, "text", None), code=getattr(args, "code", None)))
         elif cmd == "player":
             flow_player(args)
         elif cmd == "adbwifi":
