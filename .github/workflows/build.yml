@@ -37,6 +37,14 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-gradle-
 
+      - name: Kiểm tra phụ thuộc (debug dependency tree)
+        run: |
+          cd app
+          set -o pipefail
+          ./gradlew :app:dependencies --configuration debugCompileClasspath 2>&1 | tee /tmp/deps.log
+          echo "--- nanohttpd ---"
+          grep -i nanohttpd /tmp/deps.log || echo "KHONG THAY nanohttpd trong classpath"
+
       - name: Build Debug APK
         run: |
           cd app
