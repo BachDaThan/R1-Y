@@ -46,6 +46,11 @@ public class VoiceRecognitionService extends Service {
     
     // Wake word detection
     private boolean isListeningForWakeWord = true;
+    /** Mức năng lượng mic gần nhất (chẩn đoán trên trang 8088). */
+    public static volatile double lastMicEnergy = 0;
+    public static volatile long lastMicAt = 0;
+    /** Ngưỡng phát hiện "có tiếng" của bản này (ước lượng thô, không phải wake word thật). */
+    public static volatile boolean wakeModelReady = false;
     private boolean isRecordingCommand = false;
     private ByteArrayOutputStream commandAudioStream;
     
@@ -282,6 +287,11 @@ public class VoiceRecognitionService extends Service {
      */
     private boolean detectWakeWord(short[] buffer, int length) {
         double energy = calculateEnergy(buffer, length);
+
+        // Ghi lại mức âm thanh mic để trang 8088 trả lời được câu
+        // "loa có nghe thấy mình nói không?" (mic hỏng/chặn quyền -> gần 0)
+        lastMicEnergy = energy;
+        lastMicAt = System.currentTimeMillis();
         
         // Simple energy-based detection
         // Trong production nên dùng model ML như Porcupine, Snowboy

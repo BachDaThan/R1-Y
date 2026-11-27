@@ -1475,7 +1475,7 @@ def has_internet(timeout=4):
 
 
 TOOL_URL = "https://raw.githubusercontent.com/%s/main/tools/r1y.py" % REPO
-TOOL_VERSION = "1.7.3"
+TOOL_VERSION = "1.7.4"
 
 
 def tool_is_outdated():
@@ -1941,6 +1941,77 @@ def flow_update(args):
     finish(ip, st)
 
 
+def http_post(url, body_text):
+    """POST JSON/text, trả về JSON đã parse (giống http_json nhưng có body)."""
+    data = (body_text or "").encode("utf-8")
+    req = urllib.request.Request(url, data=data, headers={
+        "Content-Type": "application/json", "User-Agent": "R1Y-tool"})
+    with urllib.request.urlopen(req, timeout=30) as r:
+        return json.loads(r.read().decode("utf-8", "replace") or "{}")
+
+
+def flow_audio(args):
+    """
+    Kiểm tra vì sao loa không ra tiếng / trợ lý không nói.
+    Dùng API /api/audio/* của bản v1.7.4 trở lên (web 8088), không cần logcat.
+    """
+    banner()
+    ip = args.ip
+    if not ip:
+        ip = scan_for_loa_ip() or ask("IP loa", "")
+    if not ip:
+        die("Chưa có IP loa. Ví dụ: python3 tools/r1y.py audio --ip 192.168.2.20")
+    base = "http://%s:%d" % (ip, WEB_PORT)
+    title("Chẩn đoán âm thanh loa %s" % ip)
+
+    st = http_json(base + "/api/audio/status", timeout=10)
+    info("Âm lượng nhạc: %s/%s" % (st.get("volume"), st.get("volumeMax")))
+    if st.get("muted"):
+        warn("ÂM LƯỢNG ĐANG BẰNG 0 — đây là lý do không có tiếng.")
+    if st.get("wiredHeadset"):
+        warn("Loa đang tưởng có tai nghe cắm vào (âm thanh bị dồn sang đó).")
+    if st.get("bluetoothA2dp"):
+        warn("Âm thanh đang đi qua Bluetooth.")
+    if st.get("micEnergy") is not None:
+        me = st.get("micEnergy")
+        info("Mức mic gần nhất: %s" % me)
+        if me is not None and int(me) < 50:
+            warn("Mic gần như im lặng: nói to gần loa rồi chạy lại, hoặc cấp quyền:")
+            print("     adb shell pm grant %s android.permission.RECORD_AUDIO" % PACKAGE)
+    if st.get("micAdvice"):
+        info(str(st.get("micAdvice")))
+
+    print()
+    if confirm("Phát thử 1 tiếng bíp từ loa (không cần mạng)?", True):
+        try:
+            http_post(base + "/api/audio/test?kind=beep", "")
+            ok("Đã yêu cầu phát bíp.")
+            print("   • Loa CÓ kêu  → phần cứng + âm lượng ổn, lỗi nằm ở link nhạc/máy chủ.")
+            print("   • Loa KHÔNG kêu → bấm 'Bật âm lượng' trên web hoặc kiểm tra loa hỏng.")
+        except Exception as e:
+            warn("Không gọi được API bíp (%s) — bản trên loa có thể cũ hơn v1.7.4." % e)
+
+    if not args.no_sound_test:
+        q = ask("Dán link YouTube (hoặc từ khoá) để thử phát", "")
+        if q:
+            try:
+                info("Đang thử phát…")
+                r = http_post(base + "/api/media/play", json.dumps({"query": q}))
+                if r.get("ok"):
+                    ok("Đã lấy được link phát: %s" % (r.get("source") or ""))
+                    info("Bậc chất lượng: %s" % r.get("tier"))
+                    col = http_json(base + "/api/audio/status", timeout=10)
+                    if col.get("musicActive"):
+                        ok("MediaPlayer đang phát thật (musicActive=true).")
+                    else:
+                        warn("MediaPlayer KHÔNG phát: link sống nhưng loa không đọc được, "
+                             "hoặc âm lượng 0. Thử đổi 'Chất lượng âm thanh' sang Tương thích.")
+                else:
+                    warn("Không phát được: %s" % r.get("error"))
+            except Exception as e:
+                warn("Lỗi thử phát: %s" % e)
+
+
 def flow_hotspot(args):
     """Bật/tắt phát WiFi từ loa (để điện thoại nối trực tiếp vào cấu hình)."""
     serial, ip = connect_device(args.ip, interactive=not args.yes)
@@ -2328,6 +2399,7 @@ def _menu_once():
         ("3b", "Cập nhật qua web — KHÔNG cần adb (dùng khi adb báo offline)"),
         ("4", "Cấu hình máy chủ YouTube cho loa"),
         ("5", "Kiểm tra trạng thái loa"),
+        ("5b", "Chẩn đoán âm thanh — loa không ra tiếng / trợ lý không nói"),
         ("6", "Cấu hình WiFi nhà cho loa (quét + nối)"),
         ("7", "Bật phát WiFi (hotspot) từ loa để điện thoại kết nối"),
         ("8", "Gỡ cài đặt / khôi phục app gốc"),
@@ -2339,6 +2411,10 @@ def _menu_once():
         print("   %s%-2s%s %s" % (C.CYAN, k, C.RESET, t))
     print()
     choice = ask("Nhập số", "1")
+
+    if choice == "5b":
+        flow_audio(argparse.Namespace(ip=None, no_sound_test=False))
+        return
 
     if choice == "8b":
         flow_prefetch()
@@ -2391,7 +2467,7 @@ def main():
         epilog="Nguồn firmware: github.com/%s" % REPO)
     ap.add_argument("command", nargs="?", default="menu",
                     choices=["install", "update", "status", "config", "uninstall",
-                             "hotspot", "wifi", "webinstall", "adbwifi", "menu"],
+                             "hotspot", "wifi", "webinstall", "adbwifi", "audio", "menu"],
                     help="Việc cần làm (bỏ trống = mở menu)")
     ap.add_argument("--ip", help="IP loa trong WiFi, ví dụ 192.168.2.20")
     ap.add_argument("--apk", help="Dùng file APK chỉ định thay vì tải GitHub")
@@ -2419,6 +2495,8 @@ def main():
     ap.add_argument("--no-reboot", dest="reboot", action="store_false",
                     help="Không khởi động lại loa sau khi cài")
     ap.add_argument("--yes", "-y", action="store_true", help="Không hỏi lại (dùng cho script/CI)")
+    ap.add_argument("--no-sound-test", dest="no_sound_test", action="store_true",
+                    help="(audio) chỉ kiểm tra âm lượng/mic, không thử phát nhạc")
     ap.add_argument("--adb", help="Đường dẫn adb nếu không có trong PATH")
     args = ap.parse_args()
 
@@ -2455,6 +2533,8 @@ def main():
             flow_wifi(args)
         elif cmd == "webinstall":
             flow_webinstall(args)
+        elif cmd == "audio":
+            flow_audio(args)
         elif cmd == "adbwifi":
             flow_adb_wifi(args)
         elif cmd == "uninstall":

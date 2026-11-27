@@ -365,6 +365,20 @@ public class XiaozhiConnectionService extends Service {
                 }
                 
                 @Override
+                public void onMessage(java.nio.ByteBuffer bytes) {
+                    // Server xiaozhi gửi TIẾNG NÓI (opus) bằng khung nhị phân.
+                    // Trước đây app không hề nhận khung nhị phân -> trợ lý trả lời
+                    // nhưng loa im lặng. Giờ ghi ra file .opus và phát.
+                    try {
+                        byte[] data = new byte[bytes.remaining()];
+                        bytes.get(data);
+                        handleTtsBinary(data);
+                    } catch (Throwable t) {
+                        Log.e(TAG, "Lỗi xử lý khung nhị phân: " + t);
+                    }
+                }
+
+                @Override
                 public void onClose(int code, String reason, boolean remote) {
                     // Enhanced logging
                     Log.w(TAG, "=== WEBSOCKET CLOSED ===");
@@ -546,6 +560,53 @@ public class XiaozhiConnectionService extends Service {
         }
     }
     
+    /**
+     * Phát tiếng trả lời của trợ lý (khung nhị phân từ server).
+     *
+     * Server gửi từng đoạn opus. Android 5.1 KHÔNG có bộ giải mã opus, nên:
+     *   - nếu trùng 1 trong các header nhận dạng được (Ogg/MP3/WAV/AAC) thì phát
+     *     thẳng qua MediaPlayer;
+     *   - nếu là opus trần (không header) thì báo rõ trong log/trang web rằng
+     *     cần chuyển server sang PCM/mp3 — không im lặng nữa.
+     * Mọi trường hợp đều đặt âm lượng trước khi phát (lỗi hay gặp nhất).
+     */
+    private void handleTtsBinary(byte[] data) {
+        if (data == null || data.length < 64) return;
+        try {
+            com.bachdathan.r1y.util.AudioDiag.ensureVolume(this);
+            java.io.File f = new java.io.File(getCacheDir(), "tts_part.bin");
+            java.io.FileOutputStream fos = new java.io.FileOutputStream(f);
+            fos.write(data);
+            fos.close();
+
+            String kind = sniff(data);
+            Log.i(TAG, "TTS binary: " + data.length + " bytes, nhận dạng: " + kind);
+            if (kind == null) {
+                Log.w(TAG, "Không nhận ra định dạng tiếng trả lời (opus trần?) — "
+                    + "Android 5.1 không giải mã được opus. Đổi máy chủ AI sang PCM/mp3.");
+                com.bachdathan.r1y.util.AudioDiag.last =
+                    new org.json.JSONObject().put("tts", "opus-trần (không phát được trên Android 5.1)");
+                return;
+            }
+            android.content.Intent i = new android.content.Intent(this, AudioPlaybackService.class);
+            i.setAction(AudioPlaybackService.ACTION_PLAY_URL);
+            i.putExtra("audio_url", f.getAbsolutePath());
+            startService(i);
+        } catch (Throwable t) {
+            Log.e(TAG, "Không phát được tiếng trả lời: " + t);
+        }
+    }
+
+    /** Nhận dạng nhanh định dạng file âm thanh bằng magic bytes. */
+    private static String sniff(byte[] d) {
+        if (d.length > 4 && d[0] == 'O' && d[1] == 'g' && d[2] == 'g' && d[3] == 'S') return "ogg/opus";
+        if (d.length > 3 && d[0] == 'I' && d[1] == 'D' && d[2] == '3') return "mp3";
+        if (d.length > 2 && (d[0] & 0xFF) == 0xFF && (d[1] & 0xE0) == 0xE0) return "mp3/aac";
+        if (d.length > 12 && d[0] == 'R' && d[1] == 'I' && d[2] == 'F' && d[3] == 'F') return "wav";
+        if (d.length > 8 && d[4] == 'f' && d[5] == 't' && d[6] == 'y' && d[7] == 'p') return "mp4/m4a";
+        return null;
+    }
+
     /**
      * Handle TTS messages theo logic py-xiaozhi
      */
