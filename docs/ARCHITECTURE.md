@@ -166,3 +166,21 @@ Xem [HUONG_DAN_CAI_DAT.md](../HUONG_DAN_CAI_DAT.md).
 - `bot.yml`: bot kiểm tra PR (tiêu đề, checklist, nhãn), phân loại issue,
   tự tạo ghi chú release.
 - `dependabot.yml`: tự mở PR cập nhật phụ thuộc mỗi tuần.
+
+## Ghim phiên bản (không nâng cấp)
+
+Loa Phicomm R1 chạy **Android 5.1 (API 22)**, nên toolchain bị ghim cứng:
+
+| Thành phần | Phiên bản | Lý do |
+|---|---|---|
+| Gradle | 4.1 | AGP 3.0.0 không chạy với Gradle mới hơn |
+| Android Gradle Plugin | 3.0.0 | Bản cuối còn build được với buildTools 23 |
+| JDK | 8 | Gradle 4.1 không chạy JDK 11+ |
+| compileSdk / buildTools | 23 / 23.0.3 | Khớp ROM của loa |
+| okhttp | 3.12.13 | 4.x+ yêu cầu API 21+ với Kotlin, 5.x yêu cầu Java 8+ mới |
+| gson | 2.8.5 | 2.9+ cần Java 7+ mới |
+| Java-WebSocket | 1.5.3 | 1.6.0 cần Java 8+ |
+| multidex | 1.0.1 | 1.0.3 cần build-tools mới |
+
+**Dependabot được cấu hình bỏ qua các gói này** (`.github/dependabot.yml`).
+Nếu buộc phải nâng, phải nâng cả cụm + kiểm tra lại trên loa thật.
