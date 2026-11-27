@@ -128,6 +128,76 @@ def die(text, code=1):
     sys.exit(code)
 
 
+def is_termux():
+    return ("com.termux" in os.environ.get("PREFIX", "")
+            or os.path.isdir("/data/data/com.termux"))
+
+
+def explain_error(msg):
+    """Dịch lỗi kỹ thuật thành gợi ý dễ hiểu (không bắt người dùng mò)."""
+    m = (msg or "").lower()
+    if "command not found" in m or "not found" in m:
+        return "Thiếu công cụ cần thiết — tool sẽ thử tự cài lại."
+    if "no such file" in m:
+        return "Không thấy file cần dùng — kiểm tra lại đường dẫn."
+    if "permission denied" in m:
+        return "Không có quyền truy cập — trên Termux chạy: termux-setup-storage"
+    if "connection refused" in m or "timed out" in m or "timeout" in m:
+        return "Loa chưa phản hồi — kiểm tra loa đã bật và cùng WiFi."
+    if "unauthorized" in m:
+        return "Loa chưa cho phép máy này — bấm 'Cho phép' trên màn hình loa."
+    if "install_failed" in m:
+        return "Cài đặt bị từ chối — tool đã thử gỡ bản cũ; nếu vẫn lỗi, chọn bản APK khác."
+    if "http 404" in m:
+        return "Máy chủ không có dữ liệu này (có thể repo chưa có bản phát hành)."
+    return msg
+
+
+def ensure_env(quiet=False):
+    """
+    Kiểm tra môi trường và tự cài thư viện còn thiếu một cách an toàn.
+    - Chỉ dùng trình quản lý gói chính thức của hệ điều hành / Termux.
+    - Không tải và chạy script từ mạng.
+    - Thiếu gì không cài được thì vẫn tiếp tục (báo nhẹ, không chặn).
+    """
+    missing = []
+    if not shutil.which("adb") and not ADB:
+        missing.append("adb")
+    if is_termux():
+        pkgs = []
+        if missing:
+            pkgs.append("android-tools")
+        if not shutil.which("curl"):
+            pkgs.append("curl")
+        if not pkgs:
+            return True
+        if not quiet:
+            info("Đang tự cài thêm: %s" % ", ".join(pkgs))
+        try:
+            run(["pkg", "install", "-y"] + pkgs, timeout=600, quiet=True)
+        except Exception:
+            try:
+                run(["pkg", "update", "-y"], timeout=300, quiet=True)
+                run(["pkg", "install", "-y"] + pkgs, timeout=600, quiet=True)
+            except Exception as e:
+                if not quiet:
+                    warn("Không cài được tự động (%s) — vẫn tiếp tục." % explain_error(str(e)))
+                return False
+        if not quiet:
+            ok("Đã chuẩn bị xong công cụ cần thiết.")
+        return True
+
+    # PC: chỉ nhắc bằng lệnh cài chuẩn, không tự chạy apt (cần sudo)
+    if missing and not quiet:
+        if platform.system() == "Linux":
+            info("Nếu cần adb, cài bằng: sudo apt install android-tools-adb")
+        elif platform.system() == "Darwin":
+            info("Nếu cần adb: brew install android-platform-tools")
+        else:
+            info("Nếu cần adb: tải Android Platform Tools từ developer.android.com")
+    return True
+
+
 def ask(prompt, default=""):
     """Hỏi người dùng; trả về default khi nhập rỗng."""
     suffix = (" %s[%s]%s" % (C.GRAY, default, C.RESET)) if default else ""
@@ -923,6 +993,94 @@ def flow_hotspot(args):
             ok("IP hiện tại của loa: %s" % m.group(1))
 
 
+def flow_wifi(args):
+    """Cấu hình WiFi nhà cho loa qua giao diện web (chế độ cài đặt)."""
+    ip = args.ip or "192.168.43.1"
+    title("Cấu hình WiFi cho loa")
+    print("  %sLoa phải đang ở chế độ cài đặt (giữ nút tròn) — WiFi: %s%s"
+          % (C.DIM, "R1-Y", C.RESET))
+    info("Giao diện: http://%s:%d" % (ip, WEB_PORT))
+
+    # 1) xem trạng thái
+    st = None
+    try:
+        st = http_json("http://%s:%d/api/setup" % (ip, WEB_PORT), timeout=8)
+        w = st.get("wifi") or {}
+        if w.get("connected"):
+            ok("Loa đang ở WiFi: %s (IP %s)" % (w.get("ssid", "?"), w.get("ip", "?")))
+        else:
+            warn("Loa chưa vào WiFi nhà.")
+        if st.get("hotspotOn"):
+            info("Loa đang phát WiFi: %s" % st.get("hotspotSsid", "R1-Y"))
+    except Exception:
+        warn("Không gọi được loa ở %s — kiểm tra WiFi đã nối vào loa chưa." % ip)
+
+    # 2) quét
+    info("Đang quét WiFi xung quanh loa…")
+    networks = []
+    try:
+        r = http_json("http://%s:%d/api/wifi/scan" % (ip, WEB_PORT), timeout=40)
+        networks = r.get("networks") or []
+    except Exception as e:
+        warn("Không quét được: %s" % e)
+
+    if networks:
+        ok("Thấy %d WiFi:" % len(networks))
+        for i, n in enumerate(networks, 1):
+            lock = "khoá" if n.get("secured") else "mở"
+            saved = " (đã lưu)" if n.get("saved") else ""
+            print("    %2d. %-32s %s%s" % (i, n.get("ssid", "?"), lock, saved))
+        sel = ask("Chọn số (Enter để nhập tay)", "1")
+        ssid = ""
+        try:
+            idx = int(sel) - 1
+            if 0 <= idx < len(networks):
+                ssid = networks[idx].get("ssid", "")
+        except ValueError:
+            ssid = sel
+        if not ssid:
+            ssid = ask("Tên WiFi (SSID)")
+    else:
+        ssid = ask("Tên WiFi nhà (SSID)")
+
+    if not ssid:
+        die("Không có tên WiFi — huỷ.")
+
+    passwd = ""
+    for n in networks:
+        if n.get("ssid") == ssid and not n.get("secured"):
+            info("WiFi này không có mật khẩu.")
+            break
+    if not any(n.get("ssid") == ssid and not n.get("secured") for n in networks):
+        passwd = ask("Mật khẩu WiFi (Enter nếu mở)")
+
+    info("Đang yêu cầu loa kết nối (chờ tới ~30 giây)…")
+    try:
+        r = http_post_json("http://%s:%d/api/wifi/connect" % (ip, WEB_PORT),
+                           {"ssid": ssid, "password": passwd}, timeout=60)
+    except Exception as e:
+        die("Không gửi được yêu cầu: %s" % e)
+
+    if r.get("ok"):
+        ok("Loa đã vào WiFi: %s" % ssid)
+        if r.get("ip"):
+            print("\n  %sGiao diện loa:%s %s%s%s"
+                  % (C.BOLD, C.RESET, C.CYAN, r.get("webUrl"), C.RESET))
+            info("Giờ loa chung mạng với máy — cài firmware:")
+            print("     %spython3 tools/r1y.py install --ip %s%s"
+                  % (C.BOLD, r.get("ip"), C.RESET))
+    else:
+        err(r.get("message") or "Không kết nối được")
+        if "mật khẩu" in (r.get("message") or "").lower():
+            if confirm("Thử quên mạng cũ rồi nối lại?", True):
+                try:
+                    http_post_json("http://%s:%d/api/wifi/forget" % (ip, WEB_PORT),
+                                   {"ssid": ssid}, timeout=15)
+                except Exception:
+                    pass
+                flow_wifi(args)
+
+
 def flow_status(args):
     serial, ip = None, args.ip
     try:
@@ -990,12 +1148,13 @@ def menu():
         ("3", "Cài bản build trong máy (APK dev)"),
         ("4", "Cấu hình máy chủ YouTube cho loa"),
         ("5", "Kiểm tra trạng thái loa"),
-        ("6", "Bật phát WiFi (hotspot) từ loa để điện thoại kết nối"),
-        ("7", "Gỡ cài đặt / khôi phục app gốc"),
-        ("8", "Thoát"),
+        ("6", "Cấu hình WiFi nhà cho loa (quét + nối)"),
+        ("7", "Bật phát WiFi (hotspot) từ loa để điện thoại kết nối"),
+        ("8", "Gỡ cài đặt / khôi phục app gốc"),
+        ("9", "Thoát"),
     ]
     for k, t in items:
-        print("   %s%s%s  %s" % (C.CYAN, k, C.RESET, t))
+        print("   %s%-2s%s %s" % (C.CYAN, k, C.RESET, t))
     print()
     choice = ask("Nhập số", "1")
 
@@ -1018,9 +1177,14 @@ def menu():
     elif choice == "5":
         flow_status(argparse.Namespace(ip=None))
     elif choice == "6":
-        flow_hotspot(argparse.Namespace(ip=None, yes=False, on=None, ssid=None, password=None))
+        flow_wifi(argparse.Namespace(ip=None))
     elif choice == "7":
+        flow_hotspot(argparse.Namespace(ip=None, yes=False, on=None, ssid=None, password=None))
+    elif choice == "8":
         flow_uninstall(argparse.Namespace(ip=None, yes=False))
+    elif choice in ("9", "wifi"):
+        print("Tạm biệt!")
+        return
     else:
         print("Tạm biệt!")
         return
@@ -1033,7 +1197,7 @@ def main():
         epilog="Nguồn firmware: github.com/%s" % REPO)
     ap.add_argument("command", nargs="?", default=None,
                     choices=["install", "update", "status", "config", "uninstall",
-                             "hotspot", "menu"],
+                             "hotspot", "wifi", "menu"],
                     help="Việc cần làm (bỏ trống = mở menu)")
     ap.add_argument("--ip", help="IP loa trong WiFi, ví dụ 192.168.2.20")
     ap.add_argument("--apk", help="Dùng file APK chỉ định thay vì tải GitHub")
@@ -1071,6 +1235,12 @@ def main():
 
     try:
         cmd = args.command
+        # Tự chuẩn bị môi trường (cài thư viện thiếu) — không hiện lỗi khó hiểu
+        if cmd in ("install", "update", "status", "hotspot", "uninstall") or cmd is None:
+            try:
+                ensure_env()
+            except Exception:
+                pass
         if cmd is None or cmd == "menu":
             menu()
         elif cmd == "install":
@@ -1083,10 +1253,14 @@ def main():
             flow_config(args)
         elif cmd == "hotspot":
             flow_hotspot(args)
+        elif cmd == "wifi":
+            flow_wifi(args)
         elif cmd == "uninstall":
             flow_uninstall(args)
     except RuntimeError as e:
-        die(str(e))
+        die(explain_error(str(e)))
+    except OSError as e:
+        die(explain_error(str(e)))
     except KeyboardInterrupt:
         print()
         die("Đã huỷ.")
