@@ -274,7 +274,7 @@ public class ResolverManager {
         res.title = j.optString("title", "");
         res.author = j.optString("author", "");
         res.videoId = videoId;
-        Log.d(TAG, "Invidious chọn " + bestType);
+        Log.d(TAG, "Invidious chọn " + best.label + " (" + best.bitrate / 1000 + "kbps), thang " + ladder.size() + " bậc");
         return res;
     }
 
