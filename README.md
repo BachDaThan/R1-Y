@@ -107,6 +107,11 @@ APK do bot build, không cần cài Android SDK trên máy:
    - `Checksums` — mã SHA256
 3. Tải `.zip` về, giải nén ra file `.apk`.
 
+### Bản phát hành hiện có
+
+**`v1.6.2`** → https://github.com/BachDaThan/R1-Y/releases/tag/v1.6.2
+(`R1Y-v1.6.2-release.apk`, 1.28 MB, **đã ký** — cài được ngay trên loa)
+
 ### Tạo bản phát hành (để tool tự tải)
 
 Gắn tag dạng `v*` là bot tự build + tự tạo Release kèm APK:
