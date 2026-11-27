@@ -103,14 +103,14 @@ jobs:
           fi
 
       - name: Upload Debug APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: R1Y-Debug-APK
           path: app/app/build/outputs/apk/debug/*.apk
           retention-days: 30
 
       - name: Upload Release APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: R1Y-Release-APK
           path: app/app/build/outputs/apk/release/*.apk
@@ -123,7 +123,7 @@ jobs:
           cat checksums.txt
 
       - name: Upload checksum
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Checksums
           path: app/app/build/outputs/apk/release/checksums.txt
