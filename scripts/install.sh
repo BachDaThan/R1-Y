@@ -82,6 +82,25 @@ adb shell pm enable "$PACKAGE_NAME/.receiver.BootReceiver" 2>/dev/null || true
 adb shell dumpsys deviceidle whitelist +"$PACKAGE_NAME" 2>/dev/null || true
 adb shell rm /data/local/tmp/lilyr1.apk 2>/dev/null || true
 
+REBOOT="${REBOOT:-ask}"
+if [ "$REBOOT" = "ask" ]; then
+    read -rp "$(printf '\033[1;33m?\033[0m Khởi động lại loa ngay? (C/không) [C]: ')" ans
+    case "${ans:-c}" in [cCkK]*) REBOOT="yes";; *) REBOOT="no";; esac
+fi
+if [ "$REBOOT" = "yes" ]; then
+    info "Đang khởi động lại loa (chờ ~60 giây)…"
+    adb reboot || warn "Không ra lệnh khởi động lại được"
+    sleep 5
+    for i in $(seq 1 40); do
+        adb devices | grep -q "device$" && break
+        sleep 3
+    done
+    adb wait-for-device 2>/dev/null || true
+    info "Loa đã lên lại — kiểm tra giao diện web sau ~20 giây."
+else
+    info "Bỏ qua khởi động lại (dùng: REBOOT=yes ./scripts/install.sh <IP>)"
+fi
+
 info "=== Xong! ==="
-info "Mở giao diện loa: http://<IP_LOA>:8088"
+info "Mở giao diện loa: http://<IP_LOA>:8088 (cổng 8088)"
 info "Kiểm tra log: adb logcat | grep -E 'Xiaozhi|Resolver|WebServer'"

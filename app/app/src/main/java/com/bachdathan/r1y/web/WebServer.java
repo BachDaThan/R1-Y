@@ -112,6 +112,8 @@ public class WebServer extends NanoHTTPD {
                 return handleWifiForget(session);
             } else if ("/api/setup".equals(path)) {
                 return "POST".equals(method) ? handleSetup(session) : handleSetupStatus();
+            } else if ("/api/reboot".equals(path)) {
+                return handleReboot(session);
             } else if ("/api/settings".equals(path)) {
                 return "POST".equals(method) ? handleSaveSettings(session) : handleGetSettings();
             } else if ("/api/youtube/search".equals(path)) {
@@ -408,6 +410,71 @@ public class WebServer extends NanoHTTPD {
         return json(200, o.toString());
     }
 
+    /**
+     * POST /api/reboot {"mode":"app"|"device","confirm":true}
+     * - app    : chỉ khởi động lại R1-Y (nhanh, web lên lại ~5 giây)
+     * - device : khởi động lại cả loa (cần root; web lên lại ~40 giây)
+     */
+    private Response handleReboot(IHTTPSession session) {
+        JSONObject o = new JSONObject();
+        try {
+            String body = readBody(session);
+            JSONObject in = (body == null || body.trim().isEmpty()) ? new JSONObject() : new JSONObject(body);
+            String mode = in.optString("mode", "app");
+            if (!in.optBoolean("confirm", false)) {
+                o.put("ok", false);
+                o.put("error", "Cần xác nhận: gửi {\"confirm\":true}");
+                return json(400, o.toString());
+            }
+            o.put("ok", true);
+            o.put("mode", mode);
+            if ("device".equals(mode)) {
+                o.put("message", "Đang khởi động lại loa (khoảng 40-60 giây)");
+                json(200, o.toString());
+                // trả lời client trước rồi mới reboot
+                new Thread(new Runnable() {
+                    @Override
+                    public void run() {
+                        try {
+                            Thread.sleep(800);
+                            boolean done = false;
+                            // ưu tiên reboot qua su
+                            try {
+                                Process p = Runtime.getRuntime().exec(new String[]{"su", "-c", "reboot"});
+                                done = p.waitFor() == 0;
+                            } catch (Exception ignored) {
+                            }
+                            if (!done) {
+                                // không root: khởi động lại app là mức cao nhất có thể
+                                Log.w(TAG, "Không có root — chỉ khởi động lại app");
+                                android.os.Process.killProcess(android.os.Process.myPid());
+                            }
+                        } catch (Exception e) {
+                            Log.w(TAG, "reboot lỗi: " + e.getMessage());
+                        }
+                    }
+                }, "R1Y-Reboot").start();
+                return null;
+            }
+            // mode = app
+            o.put("message", "Đang khởi động lại R1-Y (khoảng 5-10 giây)");
+            new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        Thread.sleep(600);
+                        android.os.Process.killProcess(android.os.Process.myPid());
+                    } catch (Exception ignored) {
+                    }
+                }
+            }, "R1Y-Restart").start();
+            return json(200, o.toString());
+        } catch (Exception e) {
+            try { o.put("ok", false); o.put("error", e.getMessage()); } catch (Exception ignored) {}
+            return json(500, o.toString());
+        }
+    }
+
     private Response handleGetSettings() {
         JSONObject o = new JSONObject();
         try {
@@ -671,6 +738,8 @@ public class WebServer extends NanoHTTPD {
         + "<div class=\"card\">"
         + "<button class=\"btn primary\" onclick=\"connectPhone()\">Cho &#273;i&#7879;n tho&#7841;i k&#7871;t n&#7889;i</button>"
         + "<button class=\"btn danger\" onclick=\"disconnectBt()\">Ng&#7845;t Bluetooth</button>"
+        + "<div class=\"row\"><button class=\"btn danger\" onclick=\"reboot('app')\">Kh&#7903;i &#273;&#7897;ng l&#7841;i app</button>"
+        + "<button class=\"btn danger\" onclick=\"reboot('device')\">Kh&#7903;i &#273;&#7897;ng l&#7841;i loa</button></div>"
         + "<div class=\"msg\" id=\"btMsg\"></div></div>"
         + "<div class=\"card\" id=\"tab-nhac\">"
         + "<h3>&#127925; Ph&#225;t nh&#7841;c</h3>"
@@ -714,6 +783,7 @@ public class WebServer extends NanoHTTPD {
         + "<div class=\"msg\" id=\"updMsg\"></div></div>"
         + "<div class=\"card\" id=\"tab-trangthai\" style=\"display:none\">"
         + "<h3>Tr&#7841;ng th&#225;i</h3><div class=\"msg\" id=\"stInfo\">...</div>"
+        + "<div class=\"msg\" id=\"stUrl\">&#272;i&#7873;u khi&#7875;n loa t&#7841;i: ...</div>"
         + "<button class=\"btn primary\" onclick=\"loadStatus()\">T&#7843;i l&#7841;i tr&#7841;ng th&#225;i</button></div>"
         + "<div class=\"nav\">"
         + "<button onclick=\"show('trangthai',this)\"><span class=\"ic\">&#9673;</span>Tr&#7841;ng th&#225;i</button>"
@@ -735,7 +805,10 @@ public class WebServer extends NanoHTTPD {
         + "async function discover(){document.getElementById('resMsg').textContent='&#272;ang d&#242; m&#225;y ch&#7911; c&#244;ng c&#7897;ng (c&#243; th&#7875; m&#7845;t 10-20 gi&#226;y)...';var r=await fetch('/api/youtube/discover',{method:'POST'});var j=await r.json();document.getElementById('resMsg').textContent=j.ok?('T&#236;m th&#7845;y '+j.found+' m&#225;y ch&#7911;: '+(j.servers||[]).join(', ')):('L&#7895;i: '+j.error);}"
         + "async function checkUpd(){document.getElementById('updMsg').textContent='&#272;ang ki&#7875;m tra...';var r=await fetch('/api/update/check');var j=await r.json();document.getElementById('updInfo').textContent=j.hasUpdate?('C&#243; b&#7843;n '+j.latestTag):('&#272;&#227; m&#7899;i nh&#7845;t ('+j.currentVersion+')');document.getElementById('updMsg').textContent=j.releaseNotes||'';}"
         + "async function installUpd(){document.getElementById('updMsg').textContent='&#272;ang t&#7843;i + c&#224;i...';var r=await fetch('/api/update/install',{method:'POST'});var j=await r.json();document.getElementById('updMsg').textContent=j.ok?'&#272;&#227; c&#224;i, loa s&#7869; kh&#7903;i &#273;&#7897;ng l&#7841;i':'L&#7895;i: '+j.error;}"
-        + "async function loadStatus(){var r=await fetch('/api/status');var j=await r.json();document.getElementById('stInfo').textContent=j.app+' v'+j.version+' c&#7893;ng '+j.port;document.getElementById('sub').textContent='v'+j.version;}"
+        + "async function loadStatus(){var r=await fetch('/api/status');var j=await r.json();"
+        + "document.getElementById('stInfo').textContent=j.app+' v'+j.version+' — c&#7893;ng '+j.port;"
+        + "document.getElementById('sub').textContent='v'+j.version;"
+        + "var u=document.getElementById('stUrl');if(u)u.textContent='&#272;i&#7873;u khi&#7875;n loa t&#7841;i: http://'+location.hostname+':'+j.port;}"
         + "function connectPhone(){document.getElementById('btMsg').textContent='Bluetooth &#273;&#227; s&#7841;n s&#224;ng cho &#273;i&#7879;n tho&#7841;i k&#7871;t n&#7889;i';}"
         + "function disconnectBt(){document.getElementById('btMsg').textContent='&#272;&#227; ng&#7845;t Bluetooth';}"
         + "async function playNow(){var q=document.getElementById('playQ').value.trim();if(!q){return;}"
@@ -783,6 +856,13 @@ public class WebServer extends NanoHTTPD {
         + "async function loadSetup(){try{var r=await fetch('/api/setup');var j=await r.json();"
         + "var w=j.wifi||{};document.getElementById('setupHint').textContent=w.sameNetworkHint||'';"
         + "if(w.savedSsid){document.getElementById('wifiPass').placeholder='M&#7853;t kh&#7849;u WiFi nh&#224; ('+w.savedSsid+')';}}catch(e){}}"
+        + "async function reboot(mode){"
+        + "var t=mode==='device'?'Kh&#7903;i &#273;&#7897;ng l&#7841;i c&#7843; loa (ch&#7901; ~40-60 gi&#226;y, c&#7847;n root)':'Kh&#7903;i &#273;&#7897;ng l&#7841;i app R1-Y (ch&#7901; ~10 gi&#226;y)';"
+        + "if(!confirm(t+'?'))return;"
+        + "document.getElementById('btMsg').textContent='&#272;ang kh&#7903;i &#273;&#7897;ng l&#7841;i...';"
+        + "try{var r=await fetch('/api/reboot',{method:'POST',body:JSON.stringify({mode:mode,confirm:true})});var j=await r.json();"
+        + "document.getElementById('btMsg').textContent=j.message||j.error||'OK';"
+        + "}catch(e){document.getElementById('btMsg').textContent='Loa &#273;ang kh&#7903;i &#273;&#7897;ng l&#7841;i — ch&#7901; r&#7891;i t&#7843;i l&#7841;i trang.';}}"
         + "loadRes();loadStatus();showMode();loadAi();loadHotspot();loadAudioQ();loadSetup();"
         + "</script></body></html>";
 }

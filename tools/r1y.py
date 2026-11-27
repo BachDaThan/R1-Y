@@ -719,6 +719,61 @@ def start_app(serial):
     ok("Đã khởi động %s" % APP_NAME)
 
 
+def reboot_and_wait(serial, old_ip=None, timeout=120):
+    """Khởi động lại loa rồi chờ nó lên lại. Trả về IP mới (nếu lấy được)."""
+    title("Khởi động lại loa")
+    info("Đang khởi động lại (mất khoảng 30-60 giây)…")
+    try:
+        adb("-s", serial, "reboot", quiet=True)
+    except Exception as e:
+        warn("Không ra lệnh khởi động lại được: %s" % explain_error(str(e)))
+        return None
+
+    # chờ mất kết nối rồi có lại
+    t0 = time.time()
+    gone = False
+    while time.time() - t0 < timeout:
+        devs = []
+        try:
+            devs = list_devices()
+        except Exception:
+            pass
+        if not devs:
+            gone = True
+        elif gone:
+            ok("Loa đã lên lại")
+            break
+        time.sleep(3)
+
+    # chờ boot xong (tối đa 60 giây, dừng sớm khi loa phản hồi bình thường)
+    t1 = time.time()
+    while time.time() - t1 < 60:
+        try:
+            out = adb_out("-s", serial, "shell", "getprop", "sys.boot_completed").strip()
+            ping = adb_out("-s", serial, "shell", "echo", "r1y-ok").strip()
+        except Exception:
+            out, ping = "", ""
+        if out == "1" or "r1y-ok" in ping:
+            break
+        time.sleep(3)
+
+    # nếu mất kết nối ADB WiFi thì thử nối lại
+    if serial and ":" in serial:
+        adb("connect", serial, timeout=20, quiet=True)
+    time.sleep(2)
+
+    new_ip = None
+    try:
+        new_ip = device_ip(serial, old_ip)
+    except Exception:
+        pass
+    ok("Khởi động lại xong")
+    if new_ip:
+        info("IP loa: %s" % new_ip)
+        info("Giao diện: http://%s:%d" % (new_ip, WEB_PORT))
+    return new_ip
+
+
 def wait_web(ip, seconds=15):
     """Chờ giao diện web loa (cổng 8088) lên; trả về JSON /api/status hoặc None."""
     if not ip:
@@ -924,6 +979,22 @@ def flow_install(args):
     else:
         warn("Không lấy được IP loa — mở giao diện bằng tay để cấu hình.")
 
+    # Bước 8: khởi động lại loa (mặc định hỏi; --yes thì theo --reboot/--no-reboot)
+    want_reboot = getattr(args, "reboot", None)
+    if want_reboot is None:
+        if args.yes:
+            want_reboot = True
+        else:
+            step(8, 8, "Khởi động lại loa")
+            want_reboot = confirm("Khởi động lại loa ngay để áp dụng sạch?", True)
+    if want_reboot:
+        new_ip = reboot_and_wait(serial, ip)
+        if new_ip:
+            ip = new_ip
+        st2 = wait_web(ip, 20)
+        if st2:
+            st = st2
+
     finish(ip, st)
 
 
@@ -959,6 +1030,17 @@ def flow_update(args):
     adb("-s", serial, "shell", "am", "force-stop", PACKAGE, quiet=True)
     start_app(serial)
     st = wait_web(ip)
+
+    want_reboot = getattr(args, "reboot", None)
+    if want_reboot is None and not args.yes:
+        want_reboot = confirm("Khởi động lại loa để áp dụng bản mới?", True)
+    if want_reboot:
+        new_ip = reboot_and_wait(serial, ip)
+        if new_ip:
+            ip = new_ip
+        st2 = wait_web(ip, 20)
+        if st2:
+            st = st2
     finish(ip, st)
 
 
@@ -1220,6 +1302,10 @@ def main():
     ap.add_argument("--password", help="(hotspot) mật khẩu WiFi, mặc định r1y12345678")
     ap.add_argument("--pre", action="store_true", help="Cho phép bản thử nghiệm (prerelease)")
     ap.add_argument("--force", action="store_true", help="Cài đè dù đã ở bản mới nhất")
+    ap.add_argument("--reboot", dest="reboot", action="store_true", default=None,
+                    help="Khởi động lại loa sau khi cài")
+    ap.add_argument("--no-reboot", dest="reboot", action="store_false",
+                    help="Không khởi động lại loa sau khi cài")
     ap.add_argument("--yes", "-y", action="store_true", help="Không hỏi lại (dùng cho script/CI)")
     ap.add_argument("--adb", help="Đường dẫn adb nếu không có trong PATH")
     args = ap.parse_args()

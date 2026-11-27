@@ -87,6 +87,19 @@ adb shell dumpsys deviceidle whitelist +%PACKAGE_NAME% 2>nul
 adb shell rm /data/local/tmp/lilyr1.apk 2>nul
 
 echo.
+if not "%REBOOT%"=="no" (
+    set /p ANS="Khoi dong lai loa ngay? (C/khong) [C]: "
+    if "!ANS!"=="" set ANS=C
+    if /I "!ANS!"=="C" (
+        echo [INFO] Dang khoi dong lai loa, cho khoang 60 giay...
+        adb reboot
+        timeout /t 45 /nobreak >nul
+        adb wait-for-device
+        echo [INFO] Loa da len lai.
+    )
+)
+
+echo.
 echo === Xong! ===
 echo Mo giao dien loa: http://^<IP_LOA^>:8088
 echo Kiem tra log: adb logcat ^| findstr Xiaozhi

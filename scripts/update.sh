@@ -67,5 +67,22 @@ info "Khởi động lại app..."
 adb shell am start -n "$PACKAGE_NAME/.ui.MainActivity"
 
 rm -f "$TMP_APK"
+
+printf "Khoi dong lai loa de ap dung? (C/khong) [C]: " 2>/dev/null || true
+read -r ANS || ANS=c
+case "${ANS:-c}" in
+    [cCkK]*|"")
+        info "Đang khởi động lại loa (chờ ~60 giây)…"
+        adb reboot || warn "Không ra lệnh khởi động lại được"
+        sleep 5
+        for i in $(seq 1 40); do
+            adb devices | grep -q "device$" && break
+            sleep 3
+        done
+        adb wait-for-device 2>/dev/null || true
+        ;;
+    *) info "Bỏ qua khởi động lại." ;;
+esac
+
 info "=== Cập nhật xong $TAG! ==="
 info "Mở http://<IP_LOA>:8088 để kiểm tra."
