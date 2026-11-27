@@ -96,7 +96,9 @@ jobs:
           bash -n scripts/install.sh && echo "OK: install.sh"
           bash -n scripts/update.sh && echo "OK: update.sh"
           bash -n tools/r1y.sh && echo "OK: r1y.sh"
-          bash -n tools/r1y_termux.sh && echo "OK: r1y_termux.sh"
+          bash -n tools/r1y_termux.sh
+          bash -n tools/r1y-termux.sh
+          bash -n tools/android/install.sh && echo "OK: r1y_termux.sh"
           bash -n tools/termux_setup.sh && echo "OK: termux_setup.sh"
 
       - name: Check tool CLI works
