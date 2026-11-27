@@ -53,6 +53,26 @@ python3 tools/r1y.py update  --ip 192.168.2.20 --yes
 
 Xem [tools/README.md](tools/README.md).
 
+## WiFi của loa KHÔNG có internet — tải firmware trước
+
+WiFi do loa phát (điện thoại nhận IP `192.168.43.x`) là mạng riêng, **không ra internet**.
+Nên:
+
+| Lúc nào | Cần mạng? |
+|---|---|
+| Tải APK về điện thoại | **Có** (WiFi nhà hoặc 4G) |
+| Cài APK lên loa qua ADB | Không (chỉ cần vào WiFi của loa) |
+
+Tool tự lo việc này: chọn **1**, tool tải firmware trước rồi mới bảo bạn nối WiFi của loa.
+Muốn tải sẵn từ trước thì dùng menu **8b — Tải firmware về trước**. Bản tải về nằm ở
+`~/.r1y/firmware/` và dùng lại được nhiều lần (giữ 3 bản gần nhất).
+
+Nếu bạn **đang** ở WiFi của loa mà chưa có bản nào trong máy, tool sẽ nói rõ và chỉ 2 cách:
+nối về WiFi nhà/4G tải trước, hoặc tải APK bằng trình duyệt rồi
+`python3 tools/r1y.py install --apk /sdcard/Download/R1Y-v1.7.3-release.apk --ip 192.168.43.1`.
+
+Không cần ADB cũng cài được: menu **3b — Cập nhật qua web** (loa tự tải, loa đang ở WiFi nhà).
+
 ## Vì sao bản mới không cài đè được bản cũ (signatures do not match)
 
 APK của mỗi bản phải được ký bằng **cùng một khoá** thì Android mới cho cài đè.
