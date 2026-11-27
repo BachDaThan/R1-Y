@@ -33,7 +33,7 @@ import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-VERSION = "1.6.9"
+VERSION = "1.7.1"
 BASE = os.path.dirname(os.path.abspath(__file__))
 
 
@@ -80,6 +80,11 @@ YT_ID_RE = re.compile(r"(?:youtube\.com/(?:watch\?v=|shorts/|embed/|live/)|youtu
 CLIENTS = [None, "tv", "web_safari", "ios", "android_vr", "mweb"]
 _good_client = {"c": None, "set": False}
 _info_cache = {}
+# Máy chủ mà YouTube chặn (403 / "Sign in to confirm you're not a bot" /
+# "No valid audio streams") thì thử lại ngay cũng vô ích: nhớ 10 phút và
+# thử máy chủ kế tiếp, để loa không phải chờ từng lần.
+_dead_until = {}
+DEAD_TTL = 600
 _cache_lock = threading.Lock()
 _active = [0]
 _active_lock = threading.Lock()
@@ -120,10 +125,47 @@ def download_ytdlp():
     log(f"yt-dlp {ytdlp_version()}")
 
 
+def _kill_tree(proc):
+    """
+    yt-dlp gọi mạng nên đôi khi treo. Trước đây dùng subprocess.run(timeout=)
+    → Python chỉ ném TimeoutExpired và BỎ MẶC tiến trình con, nên hàng loạt
+    yt-dlp treo dồn lại làm máy chủ chậm dần rồi đứng hẳn (mỗi lần gọi lại
+    thêm độ trễ). Giờ chạy bằng Popen trong nhóm riêng và diệt cả cây.
+    """
+    try:
+        if os.name == "posix":
+            os.killpg(os.getpgid(proc.pid), 9)
+        else:
+            proc.kill()
+    except Exception:
+        try:
+            proc.kill()
+        except Exception:
+            pass
+
+
 def run_ytdlp(args, extra=None, timeout=90):
+    """Chạy yt-dlp với thời gian chờ CỨNG; hết giờ thì diệt cả cây tiến trình."""
     cmd = ytdlp_cmd() + ["--no-warnings"] + YTDLP_ARGS + (extra or []) + args
-    return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout,
-                          encoding="utf-8", errors="replace")
+    kwargs = {}
+    if os.name == "posix":
+        kwargs["start_new_session"] = True          # tạo process group riêng
+    else:
+        kwargs["creationflags"] = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                            text=True, encoding="utf-8", errors="replace", **kwargs)
+    try:
+        out, err = proc.communicate(timeout=timeout)
+        rc = proc.returncode
+    except subprocess.TimeoutExpired:
+        _kill_tree(proc)
+        try:
+            proc.communicate(timeout=10)
+        except Exception:
+            pass
+        raise RuntimeError("yt-dlp quá %d giây — đã dừng (máy chủ YouTube chậm/chặn IP)"
+                           % timeout)
+    return subprocess.CompletedProcess(cmd, rc, out, err)
 
 
 def ytdlp_json(args, extra=None, timeout=90):
@@ -144,13 +186,24 @@ def video_info(vid):
     if _good_client["set"] and _good_client["c"] in order:
         order.remove(_good_client["c"])
         order.insert(0, _good_client["c"])
+    # bỏ qua client vừa bị YouTube chặn gần đây (không thử lại ngay)
+    now = time.time()
+    fresh = [c for c in order if _dead_until.get(c or "mac dinh", 0) < now]
+    order = fresh + [c for c in order if c not in fresh]
     errs = []
     for cl in order:
+        if _dead_until.get(cl or "mac dinh", 0) > now:
+            errs.append(f"{cl or 'mac dinh'}: đang bị chặn, bỏ qua 10 phút")
+            continue
         extra = [] if cl is None else ["--extractor-args", f"youtube:player_client={cl}"]
         try:
             d = ytdlp_json(["-J", f"https://www.youtube.com/watch?v={vid}"], extra, 90)
         except Exception as e:
             errs.append(f"{cl or 'mac dinh'}: {e}")
+            msg = str(e).lower()
+            if ("sign in" in msg or "not a bot" in msg or "403" in msg
+                    or "no valid audio" in msg or "quá" in msg):
+                _dead_until[cl or "mac dinh"] = time.time() + DEAD_TTL
             continue
         if d.get("formats"):
             _good_client.update({"c": cl, "set": True})

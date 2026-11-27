@@ -88,6 +88,15 @@ python3 tools/r1y.py install --ip 192.168.43.1
 
 Giữ lại cài đặt khi gỡ (nếu ROM cho phép): `pm uninstall -k com.bachdathan.r1y`.
 
+## Ghi chú: bộ tài liệu cộng đồng Phicomm R1
+
+Trong nhóm “AI Plus Box” có bộ video + bộ cài All-in-One cho loa R1 (trang cấu hình
+**8081**, `R1connectwifi.apk`, AI tiếng Việt/Unisound/DLNA). R1-Y **không** phụ thuộc
+vào bộ đó và **không** dùng chung cổng: R1-Y luôn ở **8088**.
+Xem [docs/PHICOMM_COMMUNITY.md](docs/PHICOMM_COMMUNITY.md) — chỗ nào dùng được thì đã
+áp dụng (khoá ký cố định, kiểm tra IP, chống treo `yt-dlp`), chỗ nào không nên trộn
+thì nói rõ. Chọn **một** bộ firmware cho một loa.
+
 ## Cài bằng tay (script cũ / ADB)
 
 ```sh

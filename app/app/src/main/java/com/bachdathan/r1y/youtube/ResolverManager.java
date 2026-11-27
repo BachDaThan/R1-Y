@@ -229,11 +229,13 @@ public class ResolverManager {
         JSONObject j = httpJson(base + "/streams/" + videoId, 4000, 10000);
         JSONArray audio = j.optJSONArray("audioStreams");
         if (audio == null || audio.length() == 0) {
-            throw new Exception("Piped không có audioStreams");
+            throw new NoMediaException("Piped không có audioStreams (máy chủ bị YouTube chặn?)");
         }
         List<AudioFallback.Candidate> ladder =
             AudioFallback.dedupe(AudioFallback.rankPiped(audio, config.getAudioQuality()));
-        if (ladder.isEmpty()) throw new Exception("Piped không có luồng audio dùng được");
+        if (ladder.isEmpty()) {
+            throw new NoMediaException("Piped không có luồng audio dùng được");
+        }
         // ghép URL tương đối
         for (AudioFallback.Candidate c : ladder) {
             if (c.url.startsWith("/")) c.url = base + c.url;
@@ -254,14 +256,14 @@ public class ResolverManager {
         JSONObject j = httpJson(base + "/api/v1/videos/" + videoId, 4000, 10000);
         JSONArray formats = j.optJSONArray("adaptiveFormats");
         if (formats == null || formats.length() == 0) {
-            throw new Exception("Invidious không có adaptiveFormats");
+            throw new NoMediaException("Invidious không có adaptiveFormats");
         }
         // Thang chất lượng: Opus cao -> Opus thấp -> AAC cao -> AAC thấp -> codec khác
         // -> cuối cùng là âm thanh lấy từ luồng video (nếu server chỉ trả video).
         List<AudioFallback.Candidate> ladder = AudioFallback.dedupe(
             AudioFallback.rankInvidious(formats, config.getAudioQuality()));
         if (ladder.isEmpty()) {
-            throw new Exception("Invidious không có luồng audio/video nào dùng được");
+            throw new NoMediaException("Invidious không có luồng audio/video nào dùng được");
         }
         for (AudioFallback.Candidate c : ladder) {
             if (c.url.startsWith("/")) c.url = base + c.url;
@@ -376,13 +378,31 @@ public class ResolverManager {
     }
 
     /**
+     * Máy chủ còn sống (không lỗi mạng) nhưng KHÔNG lấy được tiếng cho bài này
+     * — vd Piped trả "No valid audio streams" vì YouTube chặn IP máy chủ.
+     * Khác với 403 hết hạn link. Loại này thử lại cũng vô ích, nên bỏ qua
+     * nhanh thay vì chờ hết timeout 10 giây cho từng bậc.
+     */
+    static class NoMediaException extends Exception {
+        NoMediaException(String msg) { super(msg); }
+    }
+
+    /**
      * Kiểm tra máy chủ có phản hồi không.
-     * Nhẹ: /healthcheck (Piped) hoặc /api/v1/stats (Invidious); không có thì thử gốc "/".
+     * Nhẹ: /healthcheck (Piped), /api/v1/stats (Invidious), hoặc /health
+     * (R1-Y server riêng); không có thì thử gốc "/".
      */
     private boolean probeAlive(String type, String base) {
-        String[] paths = "piped".equals(type)
-            ? new String[]{"/healthcheck", "/"}
-            : new String[]{"/api/v1/stats", "/"};
+        String[] paths;
+        if ("piped".equals(type)) {
+            paths = new String[]{"/healthcheck", "/"};
+        } else if ("custom".equals(type)) {
+            // R1-Y server trả JSON ở "/health" (và cả "/"); Tube LiteTube
+            // phục vụ "/" — thử cả hai để máy chủ nhà không bị coi là chết.
+            paths = new String[]{"/health", "/"};
+        } else {
+            paths = new String[]{"/api/v1/stats", "/"};
+        }
         for (String p : paths) {
             HttpURLConnection conn = null;
             try {
