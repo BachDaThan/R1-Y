@@ -554,6 +554,87 @@ def explain_device_states(rows):
     return hints
 
 
+def adb_connect_smart(host, port=None, tries=3, verbose=True):
+    """
+    Kết nối ADB WiFi "chịu lỗi" — xử lý đúng các ca thực tế:
+      - "already connected" nhưng devices lại offline  → disconnect rồi connect lại
+      - adb server giữ kết nối cũ hỏng                → kill-server
+      - loa chậm phản hồi (Android 5.1)               → chờ tối đa ~10 giây/lần
+    Trả về serial nếu OK, None nếu không. Tổng thời gian tối đa ~45 giây.
+    """
+    port = port or ADB_PORT
+    target = "%s:%d" % (host, port)
+    last = ""
+    t0 = time.time()
+
+    for attempt in range(1, tries + 1):
+        if time.time() - t0 > 45:
+            break
+        st = dict(devices_raw()).get(target)
+
+        if st == "device":
+            if verbose:
+                ok("Đã kết nối %s" % target)
+            return target
+
+        if st == "unauthorized":
+            warn("Loa chưa cho phép máy này (unauthorized).")
+            print("  → Nhìn màn hình loa, bấm %sCho phép%s (tick “luôn cho phép”)."
+                  % (C.BOLD, C.RESET))
+            for _ in range(20):                      # chờ tối đa ~20 giây
+                time.sleep(1)
+                if dict(devices_raw()).get(target) == "device":
+                    ok("Đã kết nối %s" % target)
+                    return target
+            continue
+
+        # đang offline hoặc chưa có → dọn kết nối cũ
+        if st:
+            adb("disconnect", target, quiet=True, allow_fail=True)
+        if attempt == 2:
+            adb("kill-server", quiet=True, allow_fail=True)
+            adb("start-server", quiet=True, allow_fail=True)
+
+        rc, out = adb("connect", target, timeout=40, allow_fail=True)
+        last = (out or "").strip()
+        low = last.lower()
+
+        # adb báo "already connected" mà vẫn offline → ép ngắt hẳn rồi nối lại
+        if "already connected" in low:
+            adb("disconnect", target, quiet=True, allow_fail=True)
+            time.sleep(1)
+            rc, out = adb("connect", target, timeout=40, allow_fail=True)
+            last = (out or "").strip()
+            low = last.lower()
+
+        # cổng đóng hẳn → thử lại cũng vô ích, báo luôn
+        if "refused" in low or "cannot connect" in low or "unable to connect" in low:
+            if verbose:
+                warn("Loa không mở cổng %d: %s" % (port, last))
+            return None
+
+        # chờ loa lên "device" (tối đa 10 giây)
+        for _ in range(10):
+            cur = dict(devices_raw()).get(target)
+            if cur == "device":
+                if verbose:
+                    ok("Đã kết nối %s" % target)
+                return target
+            if cur == "unauthorized":
+                break
+            time.sleep(1)
+
+        if verbose:
+            rows = devices_raw()
+            if rows:
+                warn("Lần %d/%d: %s" % (attempt, tries, ", ".join(explain_device_states(rows))))
+            else:
+                warn("Lần %d/%d: adb chưa thấy loa (%s)" % (attempt, tries, last or "không phản hồi"))
+        time.sleep(1)
+
+    return None
+
+
 def connect_device(ip=None, interactive=True):
     """Bảo đảm có 1 loa đang kết nối, trả về (serial, ip)."""
     find_adb()
@@ -562,8 +643,10 @@ def connect_device(ip=None, interactive=True):
     if ip:
         ip = re.sub(r":\d+$", "", ip)
         info("Kết nối ADB WiFi tới %s…" % ip)
-        adb("start-server", quiet=True, allow_fail=True)
-        rc, out = adb("connect", "%s:%d" % (ip, ADB_PORT), timeout=30)
+        serial_ok = adb_connect_smart(ip)
+        if serial_ok:
+            return serial_ok, ip
+        rc, out = adb("connect", "%s:%d" % (ip, ADB_PORT), timeout=30, allow_fail=True)
         txt = out.strip()
         low = txt.lower()
         if "failed to authenticate" in low or "authentication" in low:
@@ -620,11 +703,8 @@ def connect_device(ip=None, interactive=True):
         if hosts:
             ok("Thấy %d máy mở cổng 5555: %s" % (len(hosts), ", ".join(hosts)))
             host = hosts[0] if len(hosts) == 1 else ask("Chọn IP loa", hosts[0])
-            adb("connect", "%s:%d" % (host, ADB_PORT), timeout=30)
-            devs = list_devices()
-            if devs:
-                ok("Đã kết nối loa %s" % host)
-                return devs[0], host
+            if adb_connect_smart(host):
+                return host + ":" + str(ADB_PORT), host
         else:
             warn("Không quét thấy máy nào mở cổng 5555.")
 
@@ -632,29 +712,11 @@ def connect_device(ip=None, interactive=True):
     if not manual:
         die("Không có loa. Hãy bật ADB WiFi rồi chạy lại tool.")
     manual = re.sub(r":\d+$", "", manual)
+    serial_ok = adb_connect_smart(manual)
+    if serial_ok:
+        return serial_ok, manual
     devs = []
-    for attempt in range(1, 4):
-        rc, out = adb("connect", "%s:%d" % (manual, ADB_PORT), timeout=30)
-        time.sleep(1)
-        rows = devices_raw()
-        devs = [d for d, st in rows if st == "device"]
-        if devs:
-            break
-        if rows:
-            warn("Lần %d/%d: %s" % (attempt, 3, ", ".join(explain_device_states(rows))))
-            if any(st == "unauthorized" for _, st in rows):
-                print("  → Giờ hãy nhìn màn hình loa và bấm %sCho phép%s, tool sẽ thử lại."
-                      % (C.BOLD, C.RESET))
-                for _ in range(30):
-                    time.sleep(2)
-                    rows = devices_raw()
-                    devs = [d for d, st in rows if st == "device"]
-                    if devs:
-                        break
-                if devs:
-                    break
-        elif attempt < 3:
-            time.sleep(2)
+    out = ""
     if not devs:
         detail = out.strip()
         print()
@@ -1162,7 +1224,16 @@ def show_status(ip, serial=None):
 # ----------------------------------------------------------------- luồng chính
 def flow_install(args):
     banner()
-    serial, ip = connect_device(args.ip, interactive=not args.yes)
+    try:
+        serial, ip = connect_device(args.ip, interactive=not args.yes)
+    except SystemExit:
+        # adb không nối được nhưng web 8088 có thể vẫn mở → nhờ loa tự cài
+        if args.ip:
+            print()
+            warn("ADB không nối được — thử cách KHÔNG CẦN ADB (nhờ loa tự tải + cài).")
+            if confirm("Cập nhật qua web (http://%s:%d)?" % (args.ip, WEB_PORT), True):
+                flow_webinstall(argparse.Namespace(ip=args.ip))
+        raise
     check_is_r1(serial)
     apk_path = None
     if args.apk:
@@ -1578,7 +1649,7 @@ def _menu_once():
         ("1", "Cài mới từ đầu (A→Z) — tải APK từ GitHub rồi cài"),
         ("2", "Cập nhật firmware — so với bản mới nhất trên GitHub"),
         ("3", "Cài bản build trong máy (APK dev)"),
-        ("3b", "Cập nhật qua web — không cần adb (loa tự tải + cài)"),
+        ("3b", "Cập nhật qua web — KHÔNG cần adb (dùng khi adb báo offline)"),
         ("4", "Cấu hình máy chủ YouTube cho loa"),
         ("5", "Kiểm tra trạng thái loa"),
         ("6", "Cấu hình WiFi nhà cho loa (quét + nối)"),

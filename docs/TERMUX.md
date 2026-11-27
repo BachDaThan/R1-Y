@@ -176,6 +176,30 @@ hiện trình cài đặt trên loa — bấm Cài).
 
 ## 6. Lỗi thường gặp (tool đã tự dịch sang tiếng Việt)
 
+### `adb devices` báo `offline` (hoặc `already connected` mà vẫn offline)
+
+Đây là ca hay gặp nhất trên loa R1. Tool **đã tự xử lý từ v1.6.6**:
+
+1. `adb disconnect <IP>:5555` (dọn kết nối cũ hỏng)
+2. `adb kill-server` + `adb start-server` (server adb hay giữ trạng thái hỏng)
+3. `adb connect` lại, chờ tối đa 10 giây để loa chuyển sang `device`
+
+Nếu **vẫn offline**, làm tay đúng thứ tự này:
+
+```bash
+adb disconnect 192.168.2.20:5555
+adb kill-server
+adb start-server
+adb connect 192.168.2.20:5555
+adb devices          # phải hiện "device"
+```
+
+Vẫn offline → trên loa: **tắt Gỡ lỗi ADB → bật lại** (hoặc khởi động lại loa).
+
+> **Không cần adb vẫn cài được**: script cài/gỡ không đụng gì tới firmware hiện tại
+> của loa. Chọn menu **3b — Cập nhật qua web**, hoặc:
+> `python3 tools/r1y.py webinstall --ip 192.168.2.20`
+
 ### `adb connect` báo "connected" nhưng `adb devices` không có máy
 
 Đây là lỗi hay gặp nhất. Nguyên nhân theo thứ tự thường gặp:
