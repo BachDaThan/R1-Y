@@ -118,3 +118,8 @@
     **[] $VALUES;
     public *;
 }
+
+# Concentus (giải mã/mã hoá Opus thuần Java) — giữ nguyên để tránh obfuscate
+# làm sai các bảng tra cứu tĩnh bên trong bộ codec.
+-keep class org.concentus.** { *; }
+-dontwarn org.concentus.**

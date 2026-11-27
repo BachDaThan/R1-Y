@@ -11,8 +11,9 @@ import android.util.Log;
 
 import com.bachdathan.r1y.activation.DeviceActivator;
 import com.bachdathan.r1y.activation.DeviceFingerprint;
-import com.bachdathan.r1y.config.R1YConfig;
 import com.bachdathan.r1y.config.XiaozhiConfig;
+import com.bachdathan.r1y.config.R1YConfig;
+import com.bachdathan.r1y.util.OpusEncoderWrapper;
 import com.bachdathan.r1y.core.DeviceState;
 import com.bachdathan.r1y.core.EventBus;
 import com.bachdathan.r1y.core.ListeningMode;
@@ -73,6 +74,24 @@ public class XiaozhiConnectionService extends Service {
     private Handler retryHandler;
     private int retryCount = 0;
     private boolean isRetrying = false;
+
+    // ---- Giao thức Xiaozhi (v1.8.0) ----
+    /** Đã nhận gói hello của máy chủ -> kênh audio mở. */
+    private volatile boolean channelOpen = false;
+    private volatile int serverOpusRate = 24000;
+    private volatile int serverFrameMs = 60;
+    private volatile String serverSessionId = "";
+    /** Giải mã + phát Opus nhận từ máy chủ. */
+    public final com.bachdathan.r1y.util.OpusStreamPlayer opusPlayer =
+        new com.bachdathan.r1y.util.OpusStreamPlayer();
+    /** Mã hoá micro thành Opus để gửi lên máy chủ. */
+    private com.bachdathan.r1y.util.OpusEncoderWrapper opusEncoder;
+    /** Chẩn đoán hiển thị trên trang 8088. */
+    public static volatile String lastStt = "";
+    public static volatile String lastTts = "";
+    public static volatile String lastListenState = "";
+    public static volatile long lastTtsAt = 0;
+    public static volatile int sentFrames = 0;
     
     public class LocalBinder extends Binder {
         public XiaozhiConnectionService getService() {
@@ -340,11 +359,12 @@ public class XiaozhiConnectionService extends Service {
                     Log.i(TAG, "Server handshake: " + handshakedata.toString());
                     Log.i(TAG, "============================");
 
+                    channelOpen = false;
                     if (connectionListener != null) {
                         connectionListener.onConnected();
                     }
 
-                    // Send hello message (py-xiaozhi method)
+                    // Gói hello đúng giao thức Xiaozhi; kênh chỉ mở khi máy chủ trả hello.
                     sendHelloMessage();
                 }
 
@@ -387,6 +407,8 @@ public class XiaozhiConnectionService extends Service {
                     Log.w(TAG, "Remote: " + remote);
                     Log.w(TAG, "========================");
                     
+                    channelOpen = false;
+                    opusPlayer.close();
                     if (connectionListener != null) {
                         connectionListener.onDisconnected();
                     }
@@ -451,383 +473,343 @@ public class XiaozhiConnectionService extends Service {
             }
         }
     }
-    
     /**
-     * Send hello message (py-xiaozhi method)
-     * Format:
-     * {
-     *   "header": {
-     *     "name": "hello",
-     *     "namespace": "ai.xiaoai.common",
-     *     "message_id": "uuid"
-     *   },
-     *   "payload": {
-     *     "device_id": "MAC_ADDRESS",
-     *     "serial_number": "SN-HASH-MAC",
-     *     "device_type": "android",
-     *     "os_version": "11",
-     *     "app_version": "1.0.0"
-     *   }
-     * }
+     * Gói hello ĐÚNG giao thức Xiaozhi (xiaozhi-esp32/docs/websocket.md).
+     *
+     * Bản cũ gửi {"header":{"name":"hello"}} — máy chủ Xiaozhi không hiểu,
+     * không coi là đã mở kênh audio, nên không bao giờ mời nói chuyện.
+     *
+     * Bản này khai báo thẳng thứ R1 làm được: gửi lên Opus 16 kHz mono
+     * 60 ms/khung, và xin về Opus 24 kHz mono (máy chủ mặc định).
      */
     private void sendHelloMessage() {
         try {
             String deviceId = deviceFingerprint.getMacAddress();
-            String serialNumber = deviceFingerprint.getSerialNumber();
-
-            // Validate device identity
             if (deviceId == null || deviceId.isEmpty()) {
-                Log.e(TAG, "Cannot send hello - device ID is null");
+                Log.e(TAG, "Không gửi được hello - thiếu MAC");
                 if (connectionListener != null) {
                     connectionListener.onError("Device ID not found");
                 }
                 return;
             }
 
-            if (serialNumber == null || serialNumber.isEmpty()) {
-                Log.e(TAG, "Cannot send hello - serial number is null");
-                if (connectionListener != null) {
-                    connectionListener.onError("Serial number not found");
-                }
-                return;
-            }
+            JSONObject audioParams = new JSONObject();
+            audioParams.put("format", "opus");
+            audioParams.put("sample_rate", 16000);
+            audioParams.put("channels", 1);
+            audioParams.put("frame_duration", 60);
 
             JSONObject message = new JSONObject();
+            message.put("type", "hello");
+            message.put("version", 1);
+            message.put("transport", "websocket");
+            message.put("audio_params", audioParams);
 
-            // Header
-            JSONObject header = new JSONObject();
-            header.put("name", "hello");
-            header.put("namespace", "ai.xiaoai.common");
-            header.put("message_id", UUID.randomUUID().toString());
-
-            // Payload - Match EXACTLY with py-xiaozhi format
-            JSONObject payload = new JSONObject();
-            payload.put("device_id", deviceId);  // MAC with colons: aa:bb:cc:dd:ee:ff
-            payload.put("serial_number", serialNumber);  // SN-HASH-MAC format
-            payload.put("device_type", "android");
-            payload.put("os_version", android.os.Build.VERSION.RELEASE);
-            payload.put("app_version", "1.0.0");
-
-            message.put("header", header);
-            message.put("payload", payload);
+            JSONObject features = new JSONObject();
+            features.put("mcp", false);
+            features.put("aec", false);
+            message.put("features", features);
 
             String json = message.toString();
-            Log.i(TAG, "=== HELLO MESSAGE (py-xiaozhi) ===");
-            Log.i(TAG, "Device ID: " + deviceId);
-            Log.i(TAG, "Serial Number: " + serialNumber);
-            Log.i(TAG, "OS Version: " + android.os.Build.VERSION.RELEASE);
-            Log.i(TAG, "Full JSON: " + json);
-            Log.i(TAG, "==================================");
+            Log.i(TAG, "=== GỬI HELLO (giao thức Xiaozhi) === " + json);
             webSocketClient.send(json);
-            
-            // Mark as paired after successful hello
-            core.setDeviceState(DeviceState.IDLE);
-            eventBus.post(new ConnectionEvent(true, "Connected with py-xiaozhi method"));
-            
-            if (connectionListener != null) {
-                connectionListener.onPairingSuccess();
-            }
-            
+            // Chưa đánh dấu kết nối xong: phải chờ máy chủ trả hello.
         } catch (Exception e) {
-            Log.e(TAG, "Failed to send hello message: " + e.getMessage(), e);
+            Log.e(TAG, "Gửi hello lỗi: " + e.getMessage(), e);
             if (connectionListener != null) {
                 connectionListener.onError("Hello message failed: " + e.getMessage());
             }
         }
     }
-    
-    /**
-     * Handle message từ server
-     */
+
+    /** Máy chủ đã trả hello -> kênh audio mở, giờ mới coi là kết nối xong. */
+    private void onServerHello(JSONObject json) {
+        serverOpusRate = 24000;
+        serverFrameMs = 60;
+        serverSessionId = json.optString("session_id", "");
+        JSONObject ap = json.optJSONObject("audio_params");
+        if (ap != null) {
+            String fmt = ap.optString("format", "opus");
+            serverOpusRate = ap.optInt("sample_rate", 24000);
+            serverFrameMs = ap.optInt("frame_duration", 60);
+            if (!"opus".equalsIgnoreCase(fmt)) {
+                Log.w(TAG, "Máy chủ trả format=" + fmt + " — chỉ hỗ trợ opus");
+            }
+        }
+        Log.i(TAG, "=== MÁY CHỦ ĐÃ MỞ KÊNH: " + serverOpusRate + "Hz, "
+            + serverFrameMs + "ms, session=" + serverSessionId + " ===");
+        channelOpen = true;
+        core.setDeviceState(DeviceState.IDLE);
+        eventBus.post(new ConnectionEvent(true, "Xiaozhi: kênh audio đã mở"));
+        if (connectionListener != null) {
+            connectionListener.onPairingSuccess();
+        }
+    }
+
+    /** Xử lý tin nhắn JSON từ máy chủ (giao thức Xiaozhi). */
     private void handleMessage(String message) {
         try {
             JSONObject json = new JSONObject(message);
-            
-            // Broadcast message received event
             eventBus.post(new MessageReceivedEvent(json));
-            
-            // Handle TTS messages
+
             String type = json.optString("type");
-            if ("tts".equals(type)) {
-                handleTTSMessage(json);
+            Log.d(TAG, "Nhận JSON type=" + type);
+
+            if ("hello".equals(type)) {
+                onServerHello(json);
+            } else if ("stt".equals(type)) {
+                lastStt = json.optString("text", "");
+            } else if ("tts".equals(type)) {
+                String state = json.optString("state", "");
+                if ("start".equals(state)) {
+                    if (core.isKeepListening()
+                            && core.getListeningMode() == ListeningMode.REALTIME) {
+                        core.setDeviceState(DeviceState.SPEAKING);
+                    } else {
+                        core.setDeviceState(DeviceState.SPEAKING);
+                    }
+                } else if ("sentence_start".equals(state)) {
+                    lastTts = json.optString("text", "");
+                } else if ("stop".equals(state)) {
+                    lastTts = "";
+                    core.setDeviceState(core.isKeepListening()
+                            ? DeviceState.LISTENING : DeviceState.IDLE);
+                }
+            } else if ("llm".equals(type)) {
+                String emo = json.optString("emotion", "");
+                Log.d(TAG, "LLM emotion=" + emo);
             }
-            
-            // Handle other message types here
-            Log.d(TAG, "Message type: " + type);
-            
         } catch (JSONException e) {
-            Log.w(TAG, "Failed to parse message: " + e.getMessage());
+            Log.w(TAG, "Không phân tích được JSON: " + e.getMessage());
         }
     }
-    
+
     /**
-     * Phát tiếng trả lời của trợ lý (khung nhị phân từ server).
+     * Nhận KHUNG NHỊ PHÂN từ máy chủ = một khung Opus (60 ms) của câu trả lời.
      *
-     * Server gửi từng đoạn opus. Android 5.1 KHÔNG có bộ giải mã opus, nên:
-     *   - nếu trùng 1 trong các header nhận dạng được (Ogg/MP3/WAV/AAC) thì phát
-     *     thẳng qua MediaPlayer;
-     *   - nếu là opus trần (không header) thì báo rõ trong log/trang web rằng
-     *     cần chuyển server sang PCM/mp3 — không im lặng nữa.
-     * Mọi trường hợp đều đặt âm lượng trước khi phát (lỗi hay gặp nhất).
+     * Trước v1.8.0 app coi khung này là file hoàn chỉnh và đưa cho MediaPlayer;
+     * MediaPlayer không đọc được Opus trần, nên tiếng trả lời luôn mất. Giờ giải
+     * mã bằng Concentus rồi phát liên tục qua một AudioTrack duy nhất.
+     *
+     * Nếu máy chủ lại gửi cả file (Ogg/MP3/WAV) thì vẫn phát được như cũ.
      */
     private void handleTtsBinary(byte[] data) {
-        if (data == null || data.length < 64) return;
+        if (data == null || data.length < 2) {
+            return;
+        }
         try {
-            com.bachdathan.r1y.util.AudioDiag.ensureVolume(this);
-            java.io.File f = new java.io.File(getCacheDir(), "tts_part.bin");
-            java.io.FileOutputStream fos = new java.io.FileOutputStream(f);
-            fos.write(data);
-            fos.close();
-
             String kind = sniff(data);
-            Log.i(TAG, "TTS binary: " + data.length + " bytes, nhận dạng: " + kind);
-            if (kind == null) {
-                Log.w(TAG, "Không nhận ra định dạng tiếng trả lời (opus trần?) — "
-                    + "Android 5.1 không giải mã được opus. Đổi máy chủ AI sang PCM/mp3.");
-                com.bachdathan.r1y.util.AudioDiag.last =
-                    new org.json.JSONObject().put("tts", "opus-trần (không phát được trên Android 5.1)");
+            if (kind != null) {
+                // Là file hoàn chỉnh: giao cho MediaPlayer.
+                com.bachdathan.r1y.util.AudioDiag.ensureVolume(this);
+                java.io.File f = new java.io.File(getCacheDir(), "tts_part.bin");
+                java.io.FileOutputStream fos = new java.io.FileOutputStream(f);
+                fos.write(data);
+                fos.close();
+                android.content.Intent i =
+                    new android.content.Intent(this, AudioPlaybackService.class);
+                i.setAction(AudioPlaybackService.ACTION_PLAY_URL);
+                i.putExtra("audio_url", f.getAbsolutePath());
+                startService(i);
                 return;
             }
-            android.content.Intent i = new android.content.Intent(this, AudioPlaybackService.class);
-            i.setAction(AudioPlaybackService.ACTION_PLAY_URL);
-            i.putExtra("audio_url", f.getAbsolutePath());
-            startService(i);
+            // Khung Opus trần -> giải mã và phát.
+            opusPlayer.feed(this, data, serverOpusRate, 1);
+            lastTtsAt = System.currentTimeMillis();
         } catch (Throwable t) {
-            Log.e(TAG, "Không phát được tiếng trả lời: " + t);
+            Log.e(TAG, "Không phát được khung nhị phân: " + t);
         }
     }
 
-    /** Nhận dạng nhanh định dạng file âm thanh bằng magic bytes. */
+    /** Nhận dạng file âm thanh hoàn chỉnh bằng magic bytes (null = không phải file). */
     private static String sniff(byte[] d) {
-        if (d.length > 4 && d[0] == 'O' && d[1] == 'g' && d[2] == 'g' && d[3] == 'S') return "ogg/opus";
+        if (d.length > 4 && d[0] == 'O' && d[1] == 'g' && d[2] == 'g' && d[3] == 'S') return "ogg";
         if (d.length > 3 && d[0] == 'I' && d[1] == 'D' && d[2] == '3') return "mp3";
         if (d.length > 2 && (d[0] & 0xFF) == 0xFF && (d[1] & 0xE0) == 0xE0) return "mp3/aac";
         if (d.length > 12 && d[0] == 'R' && d[1] == 'I' && d[2] == 'F' && d[3] == 'F') return "wav";
-        if (d.length > 8 && d[4] == 'f' && d[5] == 't' && d[6] == 'y' && d[7] == 'p') return "mp4/m4a";
+        if (d.length > 8 && d[4] == 'f' && d[5] == 't' && d[6] == 'y') return "mp4/m4a";
         return null;
     }
 
-    /**
-     * Handle TTS messages theo logic py-xiaozhi
-     */
-    private void handleTTSMessage(JSONObject json) {
-        try {
-            String state = json.optString("state");
-            
-            if ("start".equals(state)) {
-                // Check listening mode
-                if (core.isKeepListening() &&
-                    core.getListeningMode() == ListeningMode.REALTIME) {
-                    // Keep listening during TTS in realtime mode
-                    core.setDeviceState(DeviceState.LISTENING);
-                } else {
-                    core.setDeviceState(DeviceState.SPEAKING);
-                }
-            } else if ("stop".equals(state)) {
-                if (core.isKeepListening()) {
-                    // Resume listening
-                    core.setDeviceState(DeviceState.LISTENING);
-                    // Restart listening theo py-xiaozhi logic
-                    sendStartListening(core.getListeningMode());
-                } else {
-                    core.setDeviceState(DeviceState.IDLE);
-                }
-            }
-            
-        } catch (Exception e) {
-            Log.e(TAG, "Error handling TTS message", e);
-        }
-    }
-    
-    
-    /**
-     * Send start listening message theo py-xiaozhi
-     */
+    /** Bắt đầu nghe: {"type":"listen","state":"start","mode":"manual"}. */
     public void sendStartListening(ListeningMode mode) {
-        if (webSocketClient == null || !webSocketClient.isOpen()) {
-            Log.w(TAG, "Cannot send message - not connected");
-            return;
-        }
-        
-        try {
-            JSONObject message = new JSONObject();
-            
-            JSONObject header = new JSONObject();
-            header.put("name", "StartListening");
-            header.put("namespace", "ai.xiaoai.recognizer");
-            header.put("message_id", UUID.randomUUID().toString());
-            
-            JSONObject payload = new JSONObject();
-            payload.put("mode", mode.getValue());
-            
-            message.put("header", header);
-            message.put("payload", payload);
-            
-            String json = message.toString();
-            Log.d(TAG, "Sending StartListening: " + json);
-            webSocketClient.send(json);
-            
-        } catch (JSONException e) {
-            Log.e(TAG, "Failed to send StartListening: " + e.getMessage(), e);
-        }
+        sendListen("start", mode == null ? "manual" : ("realtime".equals(mode.getValue())
+                ? "realtime" : "manual"), null);
     }
-    
-    /**
-     * Send stop listening message
-     */
+
+    /** Dừng nghe. */
     public void sendStopListening() {
-        if (webSocketClient == null || !webSocketClient.isOpen()) {
-            Log.w(TAG, "Cannot send message - not connected");
-            return;
-        }
-        
-        try {
-            JSONObject message = new JSONObject();
-            
-            JSONObject header = new JSONObject();
-            header.put("name", "StopListening");
-            header.put("namespace", "ai.xiaoai.recognizer");
-            header.put("message_id", UUID.randomUUID().toString());
-            
-            message.put("header", header);
-            message.put("payload", new JSONObject());
-            
-            String json = message.toString();
-            Log.d(TAG, "Sending StopListening: " + json);
-            webSocketClient.send(json);
-            
-        } catch (JSONException e) {
-            Log.e(TAG, "Failed to send StopListening: " + e.getMessage(), e);
-        }
+        sendListen("stop", null, null);
     }
-    
-    /**
-     * Send abort speaking message
-     */
-    public void sendAbortSpeaking(String reason) {
-        if (webSocketClient == null || !webSocketClient.isOpen()) {
-            Log.w(TAG, "Cannot send message - not connected");
-            return;
-        }
-        
+
+    /** Báo máy chủ là đã nghe thấy từ khoá đánh thức. */
+    public void sendWakeWordDetected(String text) {
+        sendListen("detect", null, text);
+    }
+
+    /** Ngắt câu trả lời đang phát (khi người dùng bấm nút giữa lúc trợ lý nói). */
+    public void sendAbort() {
+        if (!isChannelReady()) return;
         try {
-            JSONObject message = new JSONObject();
-            
-            JSONObject header = new JSONObject();
-            header.put("name", "AbortSpeaking");
-            header.put("namespace", "ai.xiaoai.tts");
-            header.put("message_id", UUID.randomUUID().toString());
-            
-            JSONObject payload = new JSONObject();
-            if (reason != null) {
-                payload.put("reason", reason);
+            JSONObject m = new JSONObject();
+            m.put("type", "abort");
+            if (serverSessionId != null && !serverSessionId.isEmpty()) {
+                m.put("session_id", serverSessionId);
             }
-            
-            message.put("header", header);
-            message.put("payload", payload);
-            
-            String json = message.toString();
-            Log.d(TAG, "Sending AbortSpeaking: " + json);
-            webSocketClient.send(json);
-            
-        } catch (JSONException e) {
-            Log.e(TAG, "Failed to send AbortSpeaking: " + e.getMessage(), e);
+            m.put("reason", "wake_word_detected");
+            webSocketClient.send(m.toString());
+            opusPlayer.close();
+        } catch (Exception e) {
+            Log.w(TAG, "Gửi abort lỗi: " + e.getMessage());
         }
     }
-    
-    /**
-     * Send text message (sau khi paired)
-     */
-    public void sendTextMessage(String text) {
-        if (webSocketClient == null || !webSocketClient.isOpen()) {
-            Log.w(TAG, "Cannot send message - not connected");
+
+    private void sendListen(String state, String mode, String text) {
+        if (!isChannelReady()) {
+            Log.w(TAG, "Chưa mở kênh audio, không gửi được listen/" + state);
             return;
         }
-
         try {
-            JSONObject message = new JSONObject();
-
-            JSONObject header = new JSONObject();
-            header.put("name", "Recognize");
-            header.put("namespace", "ai.xiaoai.recognizer");
-            header.put("message_id", UUID.randomUUID().toString());
-
-            JSONObject payload = new JSONObject();
-            payload.put("text", text);
-
-            message.put("header", header);
-            message.put("payload", payload);
-
-            String json = message.toString();
-            Log.d(TAG, "Sending text: " + json);
+            JSONObject m = new JSONObject();
+            m.put("type", "listen");
+            m.put("state", state);
+            if (serverSessionId != null && !serverSessionId.isEmpty()) {
+                m.put("session_id", serverSessionId);
+            }
+            if (mode != null) m.put("mode", mode);
+            if (text != null) m.put("text", text);
+            String json = m.toString();
+            Log.d(TAG, "Gửi listen: " + json);
             webSocketClient.send(json);
-
-        } catch (JSONException e) {
-            Log.e(TAG, "Failed to send text: " + e.getMessage(), e);
+            lastListenState = state;
+        } catch (Exception e) {
+            Log.w(TAG, "Gửi listen lỗi: " + e.getMessage());
         }
     }
 
+    /** Gửi câu người dùng gõ tay (tab Trợ lý trên web): {"type":"listen","state":"detect","text":...}. */
+    public void sendTextMessage(String text) {
+        sendListen("detect", null, text);
+    }
+
     /**
-     * Gửi audio data đến Xiaozhi server
-     * FIX: Added to handle SEND_AUDIO action from VoiceRecognitionService
+     * Gửi micro lên máy chủ.
+     *
+     * Chế độ Opus (mặc định): mã hoá 16 kHz mono thành khung 60 ms rồi gửi
+     * NHỊ PHÂN — đúng giao thức Xiaozhi.
+     * Chế độ PCM: gửi JSON base64 (chỉ cho máy chủ tự dựng hiểu kiểu cũ).
      */
     private void sendAudioToServer(byte[] audioData, int sampleRate, int channels) {
-        if (webSocketClient == null || !webSocketClient.isOpen()) {
-            Log.w(TAG, "Cannot send audio - not connected");
-
-            // Notify LED service - error state
+        if (!isChannelReady()) {
+            Log.w(TAG, "Chưa kết nối, không gửi được audio");
             Intent ledIntent = new Intent(this, LEDControlService.class);
             ledIntent.setAction(LEDControlService.ACTION_SET_ERROR);
             startService(ledIntent);
+            return;
+        }
 
+        if (!new R1YConfig(this).isAiUseOpus()) {
+            sendAudioAsPcm(audioData, sampleRate, channels);
             return;
         }
 
         try {
-            Log.i(TAG, "=== SENDING AUDIO TO SERVER ===");
-            Log.i(TAG, "Audio size: " + audioData.length + " bytes");
-            Log.i(TAG, "Sample rate: " + sampleRate);
-            Log.i(TAG, "Channels: " + channels);
+            if (sampleRate != OpusEncoderWrapper.SAMPLE_RATE || channels != 1) {
+                Log.w(TAG, "Audio " + sampleRate + "Hz/" + channels + "ch không khớp 16kHz mono"
+                    + " — chuyển sang gửi PCM");
+                sendAudioAsPcm(audioData, sampleRate, channels);
+                return;
+            }
+            if (opusEncoder == null) {
+                opusEncoder = new OpusEncoderWrapper();
+            }
+            short[] pcm = new short[audioData.length / 2];
+            for (int i = 0; i < pcm.length; i++) {
+                pcm[i] = (short) ((audioData[i * 2] & 0xFF) | (audioData[i * 2 + 1] << 8));
+            }
+            java.util.List<byte[]> frames = opusEncoder.feed(pcm, pcm.length);
+            for (byte[] f : frames) {
+                webSocketClient.send(f);
+            }
+            sentFrames += frames.size();
+            Log.i(TAG, "Gửi " + frames.size() + " khung Opus (" + audioData.length + " byte PCM)");
+            Intent ledIntent = new Intent(this, LEDControlService.class);
+            ledIntent.setAction(LEDControlService.ACTION_SET_SPEAKING);
+            startService(ledIntent);
+        } catch (Throwable t) {
+            Log.e(TAG, "Mã hoá/gửi Opus lỗi: " + t);
+        }
+    }
 
-            // Encode audio to base64
-            String audioBase64 = android.util.Base64.encodeToString(audioData, android.util.Base64.NO_WRAP);
-
+    /** Đường lui: PCM base64 (máy chủ tự dựng kiểu cũ). */
+    private void sendAudioAsPcm(byte[] audioData, int sampleRate, int channels) {
+        try {
+            String audioBase64 = android.util.Base64.encodeToString(
+                    audioData, android.util.Base64.NO_WRAP);
             JSONObject message = new JSONObject();
-
             JSONObject header = new JSONObject();
             header.put("name", "Recognize");
             header.put("namespace", "ai.xiaoai.recognizer");
             header.put("message_id", UUID.randomUUID().toString());
-
             JSONObject payload = new JSONObject();
             payload.put("audio", audioBase64);
             payload.put("format", "pcm");
             payload.put("sample_rate", sampleRate);
             payload.put("channels", channels);
             payload.put("bits_per_sample", 16);
-
             message.put("header", header);
             message.put("payload", payload);
-
-            String json = message.toString();
-            Log.d(TAG, "Sending audio message (base64 length: " + audioBase64.length() + ")");
-            webSocketClient.send(json);
-
-            // Notify LED service - speaking state (waiting for response)
-            Intent ledIntent = new Intent(this, LEDControlService.class);
-            ledIntent.setAction(LEDControlService.ACTION_SET_SPEAKING);
-            startService(ledIntent);
-
-            Log.i(TAG, "=== AUDIO SENT SUCCESSFULLY ===");
-
-        } catch (JSONException e) {
-            Log.e(TAG, "Failed to send audio: " + e.getMessage(), e);
-
-            // Notify LED service - error state
-            Intent ledIntent = new Intent(this, LEDControlService.class);
-            ledIntent.setAction(LEDControlService.ACTION_SET_ERROR);
-            startService(ledIntent);
+            webSocketClient.send(message.toString());
+        } catch (Exception e) {
+            Log.e(TAG, "Gửi PCM lỗi: " + e.getMessage(), e);
         }
+    }
+
+    /**
+     * Gửi trực tiếp một khung PCM 16 kHz mono cho lượt nói hiện tại.
+     * Được VoiceRecognitionService gọi 50 lần/giây — không dựng Intent.
+     */
+    public void sendMicFrame(short[] pcm, int length) {
+        if (!isChannelReady()) return;
+        try {
+            if (opusEncoder == null) opusEncoder = new OpusEncoderWrapper();
+            java.util.List<byte[]> frames = opusEncoder.feed(pcm, length);
+            for (byte[] f : frames) {
+                webSocketClient.send(f);
+                sentFrames++;
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "Gửi khung mic lỗi: " + t);
+        }
+    }
+
+    /** Kênh audio đã sẵn sàng chưa (đã nhận hello của máy chủ). */
+    private boolean isChannelReady() {
+        return channelOpen && webSocketClient != null && webSocketClient.isOpen();
+    }
+
+    /** Trạng thái giao thức để hiện trên tab Trợ lý của trang 8088. */
+    public JSONObject protocolStatus() {
+        JSONObject o = new JSONObject();
+        try {
+            o.put("connected", isConnected());
+            o.put("channelOpen", channelOpen);
+            o.put("serverRate", serverOpusRate);
+            o.put("frameMs", serverFrameMs);
+            o.put("sessionId", serverSessionId == null ? "" : serverSessionId);
+            o.put("lastStt", lastStt);
+            o.put("lastTts", lastTts);
+            o.put("listenState", lastListenState);
+            o.put("sentFrames", sentFrames);
+            o.put("recvOk", opusPlayer.framesOk);
+            o.put("recvBad", opusPlayer.framesBad);
+            o.put("recvStatus", opusPlayer.status());
+            o.put("useOpus", new R1YConfig(this).isAiUseOpus());
+            o.put("url", new R1YConfig(this).getAiUrl());
+            o.put("lastTtsAgoMs", lastTtsAt == 0 ? -1
+                    : System.currentTimeMillis() - lastTtsAt);
+        } catch (Exception ignored) {}
+        return o;
     }
     
     /**

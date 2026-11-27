@@ -75,6 +75,12 @@ public final class AudioDiag {
             o.put("routeVolume", am.getStreamVolume(st));
             o.put("routeVolumeMax", am.getStreamMaxVolume(st));
             o.put("streamMusicVolume", am.getStreamVolume(AudioManager.STREAM_MUSIC));
+            // Chẩn đoán micro (nút trên loa / nói chuyện với AI)
+            o.put("micEnergy", com.bachdathan.r1y.service.VoiceRecognitionService.lastMicEnergy);
+            o.put("micRestarts", com.bachdathan.r1y.service.VoiceRecognitionService.micRestarts);
+            o.put("streaming", com.bachdathan.r1y.service.VoiceRecognitionService.streaming);
+            o.put("micGain", new com.bachdathan.r1y.config.R1YConfig(ctx).getMicGain());
+            o.put("lastKey", com.bachdathan.r1y.util.VoiceTrigger.lastKeyName);
             o.put("streamSystemVolume", am.getStreamVolume(AudioManager.STREAM_SYSTEM));
             if (vol == 0) {
                 o.put("advice", "Âm lượng nhạc đang bằng 0 — đây là lý do không có tiếng. "

@@ -10,6 +10,7 @@ import android.content.Intent;
 import android.content.ServiceConnection;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
+import android.view.KeyEvent;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.ContextCompat;
 import android.os.IBinder;
@@ -97,6 +98,21 @@ public class MainActivity extends Activity {
         }
     };
     
+    /**
+     * Nút trên loa: chuyển cho VoiceTrigger.
+     *
+     * Loa R1 có một nút tròn trên đỉnh. Khi app đang ở tiền cảnh, phím của nút
+     * này (thường là ENTER / DPAD_CENTER / MEDIA_PLAY_PAUSE tuỳ ROM) sẽ tới đây.
+     * Trước đây app bỏ qua hoàn toàn nên "bấm nút không có gì xảy ra".
+     */
+    @Override
+    public boolean onKeyDown(int keyCode, KeyEvent event) {
+        if (com.bachdathan.r1y.util.VoiceTrigger.handleKey(this, keyCode, event)) {
+            return true;
+        }
+        return super.onKeyDown(keyCode, event);
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
