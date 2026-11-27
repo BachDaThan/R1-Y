@@ -10,8 +10,8 @@ android {
         applicationId "com.bachdathan.r1y"
         minSdkVersion 22
         targetSdkVersion 22
-        versionCode 26
-        versionName "1.7.0"
+        versionCode 27
+        versionName "1.7.1"
 
         multiDexEnabled true
 
@@ -23,6 +23,9 @@ android {
     signingConfigs {
         // Ký bằng key debug để APK release cài được ngay trên loa (Android 5.1).
         // Muốn key riêng: đặt r1y-release.jks vào app/ và khai báo trong gradle.properties.
+        // Khoá ký phải CỐ ĐỊNH giữa các bản, nếu không Android sẽ từ chối cài
+        // đè: INSTALL_FAILED_UPDATE_INCOMPATIBLE: signatures do not match.
+        // CI đặt R1Y_KEYSTORE = ~/.r1y-signing/r1y-release.jks (xem build.yml).
         releaseKey {
             storeFile file(System.getenv("R1Y_KEYSTORE") ?: "${System.properties['user.home']}/.android/debug.keystore")
             storePassword System.getenv("R1Y_STORE_PASS") ?: "android"
@@ -39,6 +42,10 @@ android {
         }
         debug {
             debuggable true
+            // Dùng CÙNG khoá ký với bản release: nếu bản debug do CI build ký
+            // bằng key debug mặc định thì nó lại khác chữ ký bản release →
+            // Android từ chối cài đè (signatures do not match).
+            signingConfig signingConfigs.releaseKey
         }
     }
 
