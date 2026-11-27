@@ -1,4 +1,4 @@
-# Tool cài firmware Lily R1 (A → Z)
+# Tool cài firmware R1-Y (A → Z)
 
 Một tool duy nhất, chạy trên **Windows / macOS / Linux**, lo hết mọi bước:
 tìm loa trong WiFi → tải firmware từ **GitHub Releases của BachDaThan/R1-Y**
@@ -54,7 +54,7 @@ python3 tools/r1y.py config --ip 192.168.2.20 \
   --resolvers '[{"type":"custom","url":"http://192.168.2.130:8091"}]'
 
 # Cài APK có sẵn (dev)
-python3 tools/r1y.py install --ip 192.168.2.20 --apk ./LilyR1-v1.4.0-release.apk
+python3 tools/r1y.py install --ip 192.168.2.20 --apk ./R1Y-v1.4.0-release.apk
 
 # Cài bản vừa build trong repo
 python3 tools/r1y.py install --ip 192.168.2.20 --source local
@@ -79,7 +79,7 @@ python3 tools/r1y.py install --ip 192.168.2.20 --source local
 1. **Tìm loa** — `adb connect <IP>:5555`, hoặc tự quét dải WiFi nhà tìm cổng 5555.
 2. **Nhận diện** loa Phicomm R1 (model/brand/API), cảnh báo nếu không đúng.
 3. **Tắt app Phicomm gốc** (`pm hide` — vẫn giữ để khôi phục sau).
-4. **Gỡ bản cũ** của Lily R1 nếu có.
+4. **Gỡ bản cũ** của R1-Y nếu có.
 5. **Tải firmware** từ `github.com/BachDaThan/R1-Y/releases` (bản mới nhất kèm APK).
 6. **Cài** bằng `pm install` (tương thích Android 5.1), fallback `adb install`.
 7. **Cấp quyền** thu âm + bộ nhớ, kiểm tra root (cho đèn LED).
@@ -110,7 +110,7 @@ Có 3 cách cập nhật, chọn cách nào cũng được:
 python3 tools/r1y.py uninstall --ip 192.168.2.20
 ```
 
-Gỡ Lily R1 và bật lại 4 app Phicomm gốc (`pm unhide`).
+Gỡ R1-Y và bật lại 4 app Phicomm gốc (`pm unhide`).
 
 ## Xử lý sự cố
 

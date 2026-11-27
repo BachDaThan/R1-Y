@@ -26,7 +26,7 @@ import java.net.URL;
  *
  * - Kiểm tra: GET https://api.github.com/repos/BachDaThan/R1-Y/releases/latest
  * - So sánh tag (v1.4.0) với version hiện tại của app.
- * - Tải APK (asset *.apk) về /sdcard/Download/LilyR1-update.apk
+ * - Tải APK (asset *.apk) về /sdcard/Download/R1Y-update.apk
  * - Cài: ưu tiên "pm install" qua root (nếu có), ngược lại mở trình cài đặt.
  *
  * Nút "Cập nhật" trong giao diện web (cổng 8088) gọi qua WebServer.
@@ -94,7 +94,7 @@ public class UpdateManager {
         HttpURLConnection conn = (HttpURLConnection) new URL(api).openConnection();
         conn.setConnectTimeout(15000);
         conn.setReadTimeout(15000);
-        conn.setRequestProperty("User-Agent", "LilyR1/1.4");
+        conn.setRequestProperty("User-Agent", "R1Y/1.4");
         conn.setRequestProperty("Accept", "application/vnd.github+json");
         int code = conn.getResponseCode();
         if (code != 200) {
@@ -137,17 +137,17 @@ public class UpdateManager {
         return info;
     }
 
-    /** Tải APK về /sdcard/Download/LilyR1-update.apk. Trả về File. */
+    /** Tải APK về /sdcard/Download/R1Y-update.apk. Trả về File. */
     public File downloadApk(String apkUrl) throws Exception {
         File dir = new File(Environment.getExternalStorageDirectory(), "Download");
         if (!dir.exists()) dir.mkdirs();
-        File apk = new File(dir, "LilyR1-update.apk");
+        File apk = new File(dir, "R1Y-update.apk");
 
         Log.i(TAG, "Tải APK: " + apkUrl);
         HttpURLConnection conn = (HttpURLConnection) new URL(apkUrl).openConnection();
         conn.setConnectTimeout(30000);
         conn.setReadTimeout(60000);
-        conn.setRequestProperty("User-Agent", "LilyR1/1.4");
+        conn.setRequestProperty("User-Agent", "R1Y/1.4");
         int code = conn.getResponseCode();
         if (code != 200) throw new Exception("Tải APK HTTP " + code);
 

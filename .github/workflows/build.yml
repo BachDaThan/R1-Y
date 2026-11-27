@@ -77,25 +77,25 @@ jobs:
         run: |
           cd app/app/build/outputs/apk
           if [ -f "debug/app-debug.apk" ]; then
-            mv debug/app-debug.apk debug/LilyR1-v${{ steps.version.outputs.version_name }}-debug.apk
+            mv debug/app-debug.apk debug/R1Y-v${{ steps.version.outputs.version_name }}-debug.apk
           fi
           if [ -f "release/app-release.apk" ]; then
-            mv release/app-release.apk release/LilyR1-v${{ steps.version.outputs.version_name }}-release.apk
+            mv release/app-release.apk release/R1Y-v${{ steps.version.outputs.version_name }}-release.apk
           elif [ -f "release/app-release-unsigned.apk" ]; then
-            mv release/app-release-unsigned.apk release/LilyR1-v${{ steps.version.outputs.version_name }}-release.apk
+            mv release/app-release-unsigned.apk release/R1Y-v${{ steps.version.outputs.version_name }}-release.apk
           fi
 
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: LilyR1-Debug-APK
+          name: R1Y-Debug-APK
           path: app/app/build/outputs/apk/debug/*.apk
           retention-days: 30
 
       - name: Upload Release APK
         uses: actions/upload-artifact@v4
         with:
-          name: LilyR1-Release-APK
+          name: R1Y-Release-APK
           path: app/app/build/outputs/apk/release/*.apk
           retention-days: 90
 
@@ -124,7 +124,7 @@ jobs:
       - name: Download Release APK
         uses: actions/download-artifact@v4
         with:
-          name: LilyR1-Release-APK
+          name: R1Y-Release-APK
           path: release-apk
 
       - name: Download Checksums
@@ -140,9 +140,9 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          name: Lily R1 ${{ steps.tag_version.outputs.version }}
+          name: R1-Y ${{ steps.tag_version.outputs.version }}
           body: |
-            ## Lily R1 (R1-Y) — Firmware cho loa Phicomm R1
+            ## R1-Y — Firmware cho loa Phicomm R1
 
             ### 📦 Phiên bản: ${{ steps.tag_version.outputs.version }}
 
@@ -153,11 +153,11 @@ jobs:
             ### 🚀 Cài đặt qua cùng WiFi
             ```bash
             # Tải APK
-            wget https://github.com/${{ github.repository }}/releases/download/v${{ steps.tag_version.outputs.version }}/LilyR1-v${{ steps.tag_version.outputs.version }}-release.apk
+            wget https://github.com/${{ github.repository }}/releases/download/v${{ steps.tag_version.outputs.version }}/R1Y-v${{ steps.tag_version.outputs.version }}-release.apk
 
             # Cài qua ADB WiFi (loa và máy tính cùng WiFi)
             adb connect <IP_LOA>:5555
-            adb install -r LilyR1-v${{ steps.tag_version.outputs.version }}-release.apk
+            adb install -r R1Y-v${{ steps.tag_version.outputs.version }}-release.apk
             ```
             Hoặc chạy script trong repo: `./scripts/install.sh <IP_LOA>`
 

@@ -1,6 +1,6 @@
-# Hướng dẫn cài đặt Lily R1 (R1-Y) cho loa Phicomm R1
+# Hướng dẫn cài đặt R1-Y cho loa Phicomm R1
 
-Firmware **Lily R1** biến loa Phicomm R1 (Android 5.1) thành trợ lý giọng nói
+Firmware **R1-Y** biến loa Phicomm R1 (Android 5.1) thành trợ lý giọng nói
 Xiaozhi + loa phát nhạc YouTube. Cài qua **cùng WiFi** bằng ADB, cập nhật
 ngay trong giao diện từ GitHub Releases của repo này.
 
@@ -38,7 +38,7 @@ Xem [tools/README.md](tools/README.md).
 ## 3. Tải APK
 
 - Cách 1 (khuyên dùng): vào [Releases](../../releases) của repo này,
-  tải `LilyR1-vX.Y.Z-release.apk` mới nhất.
+  tải `R1Y-vX.Y.Z-release.apk` mới nhất.
 - Cách 2: build từ mã nguồn:
   ```sh
   cd app
@@ -65,7 +65,7 @@ cấp quyền, kiểm tra root (cho LED), khởi động app và bật tự ch�
 
 ```sh
 adb connect 192.168.2.20:5555
-adb push LilyR1-v1.4.0-release.apk /data/local/tmp/lilyr1.apk
+adb push R1Y-v1.4.0-release.apk /data/local/tmp/lilyr1.apk
 adb shell pm install -t -r /data/local/tmp/lilyr1.apk
 adb shell pm grant com.bachdathan.r1y android.permission.RECORD_AUDIO
 adb shell am start -n com.bachdathan.r1y/.ui.MainActivity

@@ -1,11 +1,11 @@
 @echo off
 REM ==========================================================
-REM  Lily R1 - Tool cai firmware cho loa Phicomm R1 (Windows)
+REM  R1-Y - Tool cai firmware cho loa Phicomm R1 (Windows)
 REM  Chi can bam dup file nay. Nguon: github.com/BachDaThan/R1-Y
 REM ==========================================================
 setlocal
 chcp 65001 >nul
-title Lily R1 - Tool cai firmware
+title R1-Y - Tool cai firmware
 
 where python >nul 2>nul
 if %errorlevel%==0 (

@@ -17,7 +17,7 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Bộ lấy tiếng YouTube của Lily R1.
+ * Bộ lấy tiếng YouTube của R1-Y.
  *
  * Cấu hình là mảng JSON (đúng như giao diện "Bộ lấy tiếng YouTube"):
  *   [{"type":"piped|invidious|custom","url":"..."}]
@@ -227,10 +227,10 @@ public class ResolverManager {
         if (audio == null || audio.length() == 0) {
             throw new Exception("Piped không có audioStreams");
         }
-        JSONObject best = audio.optJSONObject(0);
+        JSONObject best = pickPipedAudio(audio, config.getAudioQuality());
         if (best == null) throw new Exception("Piped audioStreams rỗng");
         String url = best.optString("url", "");
-        if (url.isEmpty()) throw new Exception("Piped audioStreams[0] không có url");
+        if (url.isEmpty()) throw new Exception("Piped audioStreams không có url");
         if (url.startsWith("/")) url = base + url;
         Resolved res = new Resolved();
         res.audioUrl = url;
@@ -247,24 +247,40 @@ public class ResolverManager {
         if (formats == null || formats.length() == 0) {
             throw new Exception("Invidious không có adaptiveFormats");
         }
-        // Ưu tiên audio/mp4 (AAC, loa R1 phát tốt nhất), sau đó audio/ khác (Opus)
+        // quality=high  -> Opus/WebM bitrate cao nhất (nghe hay hơn)
+        // quality=compat-> audio/mp4 (AAC), phù hợp nếu MediaPlayer không đọc Opus
         String bestUrl = null;
         String bestType = null;
+        boolean high = "high".equals(config.getAudioQuality());
+        long bestBitrate = -1;
+        String firstMp4 = null, firstMp4Type = null, firstAny = null, firstAnyType = null;
         for (int i = 0; i < formats.length(); i++) {
             JSONObject f = formats.optJSONObject(i);
             if (f == null) continue;
             String type = f.optString("type", "");
             String url = f.optString("url", "");
-            if (url.isEmpty()) continue;
-            if (type.startsWith("audio/mp4")) {
+            if (url.isEmpty() || !type.startsWith("audio/")) continue;
+            long br = parseBitrate(f);
+            if (type.startsWith("audio/mp4") && firstMp4 == null) {
+                firstMp4 = url;
+                firstMp4Type = type;
+            }
+            if (firstAny == null) {
+                firstAny = url;
+                firstAnyType = type;
+            }
+            if (br > bestBitrate) {
+                bestBitrate = br;
                 bestUrl = url;
                 bestType = type;
-                break;
             }
-            if (type.startsWith("audio/") && bestUrl == null) {
-                bestUrl = url;
-                bestType = type;
-            }
+        }
+        if (!high) {
+            if (firstMp4 != null) { bestUrl = firstMp4; bestType = firstMp4Type; }
+            else if (bestUrl == null) { bestUrl = firstAny; bestType = firstAnyType; }
+        } else if (bestUrl == null) {
+            bestUrl = firstAny;
+            bestType = firstAnyType;
         }
         if (bestUrl == null) throw new Exception("Invidious không có luồng audio");
         if (bestUrl.startsWith("/")) bestUrl = base + bestUrl;
@@ -389,7 +405,7 @@ public class ResolverManager {
                 conn.setConnectTimeout(3000);
                 conn.setReadTimeout(4000);
                 conn.setInstanceFollowRedirects(true);
-                conn.setRequestProperty("User-Agent", "LilyR1/1.4");
+                conn.setRequestProperty("User-Agent", "R1Y/1.4");
                 int code = conn.getResponseCode();
                 if (code >= 200 && code < 400) return true;
             } catch (Exception ignored) {
@@ -426,6 +442,60 @@ public class ResolverManager {
 
     // ------------------------------------------------------------------ http
 
+    /**
+     * Chọn luồng audio tốt nhất từ Piped (LiteTube bridge).
+     * quality=high -> bitrate cao nhất, ưu tiên Opus (webm/opus ~160kbps)
+     * quality=compat -> ưu tiên m4a/AAC
+     */
+    private JSONObject pickPipedAudio(JSONArray audio, String quality) {
+        boolean high = !"compat".equals(quality);
+        JSONObject best = null;
+        long bestScore = Long.MIN_VALUE;
+        JSONObject firstMp4 = null, firstAny = null;
+        for (int i = 0; i < audio.length(); i++) {
+            JSONObject f = audio.optJSONObject(i);
+            if (f == null) continue;
+            String url = f.optString("url", "");
+            if (url.isEmpty()) continue;
+            if (firstAny == null) firstAny = f;
+            String mime = f.optString("mimeType", f.optString("format", ""));
+            boolean isMp4 = mime.toLowerCase().contains("mp4") || mime.toUpperCase().contains("M4A");
+            boolean isOpus = mime.toLowerCase().contains("opus") || mime.toLowerCase().contains("webm");
+            if (isMp4 && firstMp4 == null) firstMp4 = f;
+            long br = parseBitrate(f);
+            long score = br;
+            if (high) {
+                if (isOpus) score += 100000;   // ưu tiên Opus khi muốn chất lượng cao
+            } else {
+                if (isMp4) score += 100000;    // ưu tiên AAC khi cần tương thích
+            }
+            if (score > bestScore) {
+                bestScore = score;
+                best = f;
+            }
+        }
+        if (best == null) return firstAny;
+        if (!high && firstMp4 != null) return firstMp4;
+        return best;
+    }
+
+    /** Đọc bitrate từ nhiều kiểu trường (số, "128kbps", "160 kbps"). */
+    private static long parseBitrate(JSONObject f) {
+        Object raw = f.opt("bitrate");
+        if (raw instanceof Number) return ((Number) raw).longValue();
+        String s = f.optString("bitrate", f.optString("quality", ""));
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("(\\d{2,4})").matcher(s);
+        if (m.find()) {
+            try {
+                long v = Long.parseLong(m.group(1));
+                // "160kbps" hoặc "160" đều hiểu là kbps
+                return v < 1000 ? v * 1000 : v;
+            } catch (Exception ignored) { }
+        }
+        String q = f.optString("quality", "");
+        return q.toLowerCase().contains("high") ? 160000 : 0;
+    }
+
     private JSONObject httpJson(String urlStr, int connectMs, int readMs) throws Exception {
         return new JSONObject(httpText(urlStr, connectMs, readMs));
     }
@@ -439,7 +509,7 @@ public class ResolverManager {
         try {
             conn.setConnectTimeout(connectMs);
             conn.setReadTimeout(readMs);
-            conn.setRequestProperty("User-Agent", "LilyR1/1.4");
+            conn.setRequestProperty("User-Agent", "R1Y/1.4");
             conn.setRequestProperty("Accept", "application/json");
             int code = conn.getResponseCode();
             if (code != 200) throw new Exception("HTTP " + code + " " + urlStr);

@@ -163,7 +163,7 @@ jobs:
             const msgs = commits.data
               .map(c => `- ${c.commit.message.split('\n')[0]} (${c.sha.substring(0, 7)})`)
               .join('\n');
-            const body = `## Lily R1 ${tag}\n\n### Thay đổi gần đây\n${msgs}\n\n### Cài đặt\nXem README.md và HUONG_DAN_CAI_DAT.md trong repo.\n\n### Cập nhật trên loa\nMở http://<IP_LOA>:8088 → Thêm → Cập nhật firmware.`;
+            const body = `## R1-Y ${tag}\n\n### Thay đổi gần đây\n${msgs}\n\n### Cài đặt\nXem README.md và HUONG_DAN_CAI_DAT.md trong repo.\n\n### Cập nhật trên loa\nMở http://<IP_LOA>:8088 → Thêm → Cập nhật firmware.`;
             await github.rest.repos.updateRelease({
               owner: context.repo.owner,
               repo: context.repo.repo,

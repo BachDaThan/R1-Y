@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-r1y.py — Tool cài đặt firmware Lily R1 (R1-Y) cho loa Phicomm R1, từ A đến Z.
+r1y.py — Tool cài đặt firmware R1-Y cho loa Phicomm R1, từ A đến Z.
 
 Một file Python, chỉ dùng thư viện chuẩn. Chạy được trên Windows / macOS / Linux.
 
@@ -13,8 +13,8 @@ Menu:
   3) Cài bản build trong máy      : dùng file APK có sẵn (dev)
   4) Cấu hình máy chủ YouTube     : nhập mảng resolver [] hoặc máy chủ riêng
   5) Kiểm tra loa                 : phiên bản, trạng thái, máy chủ đang dùng
-  6) Gỡ cài đặt / khôi phục       : gỡ Lily R1, bật lại app Phicomm gốc
-  7) Thoát
+  6) Gỡ cài đặt / khôi phục       : gỡ R1-Y, bật lại app Phicomm gốc
+  8) Thoát
 
 Chạy không cần hỏi (dùng cho CI / script khác):
   python3 tools/r1y.py install --ip 192.168.2.20 --yes
@@ -46,7 +46,7 @@ import urllib.request
 REPO = "BachDaThan/R1-Y"
 GITHUB_API = "https://api.github.com/repos/%s/releases" % REPO
 PACKAGE = "com.bachdathan.r1y"
-APP_NAME = "Lily R1"
+APP_NAME = "R1-Y"
 ACTIVITY = PACKAGE + "/.ui.MainActivity"
 WEB_PORT = 8088
 ADB_PORT = 5555
@@ -148,7 +148,7 @@ def confirm(prompt, default=True):
 def banner():
     print("%s" % C.CYAN)
     print("  ╔══════════════════════════════════════════════╗")
-    print("  ║   %sLily R1%s%s — Tool cài đặt firmware A→Z      ║" % (C.BOLD + C.RESET + C.CYAN, C.RESET, C.CYAN))
+    print("  ║   %sR1-Y%s%s — Tool cài đặt firmware A→Z      ║" % (C.BOLD + C.RESET + C.CYAN, C.RESET, C.CYAN))
     print("  ║   %sLoa Phicomm R1 · nguồn: %s%s" % (C.DIM, REPO, C.RESET + C.CYAN))
     print("  ╚══════════════════════════════════════════════╝")
     print(C.RESET)
@@ -671,8 +671,9 @@ def wait_web(ip, seconds=15):
 
 
 # ----------------------------------------------------------------- cấu hình web
-def configure_loa(ip, resolvers=None, music_server=None, autodiscover=None, interactive=True):
-    """Cấu hình máy chủ YouTube trên loa qua API 8088."""
+def configure_loa(ip, resolvers=None, music_server=None, autodiscover=None, interactive=True,
+                  ai_server=None, ai_url=None, ai_token=None, audio_quality=None):
+    """Cấu hình loa qua API 8088 (YouTube, máy chủ AI, chất lượng âm thanh)."""
     if not ip:
         warn("Không biết IP loa — bỏ qua cấu hình web.")
         return False
@@ -701,6 +702,39 @@ def configure_loa(ip, resolvers=None, music_server=None, autodiscover=None, inte
     payload = {}
     if resolvers is not None:
         payload["youtube_resolvers"] = resolvers
+    if ai_server is not None:
+        payload["ai_server"] = ai_server
+    if ai_url is not None:
+        payload["ai_server_url"] = ai_url
+    if ai_token is not None:
+        payload["ai_token"] = ai_token
+    if audio_quality is not None:
+        payload["audio_quality"] = audio_quality
+
+    # Hỏi chọn máy chủ AI (mặc định giữ xiaozhi.me)
+    if interactive and ai_server is None:
+        if confirm("Đổi máy chủ AI (mặc định là xiaozhi.me)?", False):
+            title("Máy chủ AI")
+            print("   1  xiaozhi.me (chính thức) — mặc định")
+            print("   2  Xiaozhi tự dựng (esp32-server)")
+            print("   3  Tự nhập URL khác")
+            c = ask("Chọn", "1")
+            if c == "2":
+                payload["ai_server"] = "xiaozhi_self"
+                payload["ai_server_url"] = ask("URL WebSocket", "ws://192.168.1.100:8000/xiaozhi/v1/")
+            elif c == "3":
+                payload["ai_server"] = "custom"
+                payload["ai_server_url"] = ask("URL WebSocket (ws:// hoặc wss://)")
+            t = ask("Token/API key (Enter bỏ qua, dùng token kích hoạt)")
+            if t:
+                payload["ai_token"] = t
+
+    # Hỏi chất lượng âm thanh
+    if interactive and audio_quality is None:
+        if confirm("Dùng âm thanh chất lượng cao (Opus, nghe hay hơn)?", True):
+            payload["audio_quality"] = "high"
+        else:
+            payload["audio_quality"] = "compat"
     if music_server is not None:
         payload["music_server"] = music_server
     if autodiscover is not None:
@@ -749,6 +783,10 @@ def show_status(ip, serial=None):
         info("Invidious đang dùng: %s" % ", ".join(st["discoveredInvidious"].split()))
     if st.get("musicServer"):
         info("Máy chủ nhạc: %s" % st["musicServer"])
+    info("Máy chủ AI: %s (%s)" % (st.get("aiServer", "?"), st.get("aiUrl", "")))
+    info("Chất lượng âm thanh: %s" % ("cao (Opus)" if st.get("audioQuality") == "high" else "tương thích (AAC)"))
+    if st.get("hotspotEnabled"):
+        info("Phát WiFi: bật (SSID %s)" % st.get("hotspotSsid", "R1-Y"))
     info("Nguồn cập nhật: github.com/%s" % (st.get("updateRepo") or REPO))
     try:
         rd = http_json("http://%s:%d/api/youtube/discover" % (ip, WEB_PORT), timeout=60)
@@ -808,7 +846,11 @@ def flow_install(args):
                       resolvers=json.loads(args.resolvers) if args.resolvers else None,
                       music_server=getattr(args, "music_server", None),
                       autodiscover=None,
-                      interactive=not args.yes)
+                      interactive=not args.yes,
+                      ai_server=getattr(args, "ai_server", None),
+                      ai_url=getattr(args, "ai_url", None),
+                      ai_token=getattr(args, "ai_token", None),
+                      audio_quality=getattr(args, "audio_quality", None))
     else:
         warn("Không lấy được IP loa — mở giao diện bằng tay để cấu hình.")
 
@@ -850,6 +892,37 @@ def flow_update(args):
     finish(ip, st)
 
 
+def flow_hotspot(args):
+    """Bật/tắt phát WiFi từ loa (để điện thoại nối trực tiếp vào cấu hình)."""
+    serial, ip = connect_device(args.ip, interactive=not args.yes)
+    ip = device_ip(serial, ip)
+    on = True if args.on is None else args.on
+    ssid = args.ssid or "R1-Y"
+    pw = args.password or "r1y12345678"
+    title("Phát WiFi từ loa")
+    if ip:
+        try:
+            r = http_post_json("http://%s:%d/api/hotspot" % (ip, WEB_PORT),
+                               {"on": on, "ssid": ssid, "password": pw}, timeout=20)
+            if r.get("ok"):
+                ok("Đã bật phát WiFi: %s" % r.get("ssid", ssid))
+                info("Điện thoại kết nối WiFi '%s' (mật khẩu %s)" % (ssid, pw))
+                info("Rồi mở: %s" % r.get("url", "http://192.168.43.1:8088"))
+                return
+            warn("Loa không bật được hotspot: %s" % r.get("warning", r.get("hint", "")))
+        except Exception as e:
+            warn("Không gọi được API loa: %s" % e)
+    # Dự phòng: bật bằng ADB (cần root)
+    if args.yes or confirm("Thử bật bằng ADB (cần root)?", True):
+        adb("-s", serial, "shell", "su", "-c",
+            'cmd wifi start-softap "%s" wpa2 "%s"' % (ssid, pw), quiet=True)
+        hid = adb_out("-s", serial, "shell", "ip", "-f", "inet", "addr", "show", "wlan0")
+        m = re.search(r"inet\s+(\d+\.\d+\.\d+\.\d+)", hid)
+        info("Kiểm tra WiFi loa bằng tay: adb shell ip -f inet addr show wlan0")
+        if m:
+            ok("IP hiện tại của loa: %s" % m.group(1))
+
+
 def flow_status(args):
     serial, ip = None, args.ip
     try:
@@ -873,7 +946,11 @@ def flow_config(args):
     resolvers = json.loads(args.resolvers) if args.resolvers else None
     configure_loa(ip, resolvers=resolvers,
                   music_server=getattr(args, "music_server", None),
-                  interactive=(resolvers is None and not args.yes))
+                  interactive=(resolvers is None and not args.yes),
+                  ai_server=getattr(args, "ai_server", None),
+                  ai_url=getattr(args, "ai_url", None),
+                  ai_token=getattr(args, "ai_token", None),
+                  audio_quality=getattr(args, "audio_quality", None))
     show_status(ip)
 
 
@@ -913,8 +990,9 @@ def menu():
         ("3", "Cài bản build trong máy (APK dev)"),
         ("4", "Cấu hình máy chủ YouTube cho loa"),
         ("5", "Kiểm tra trạng thái loa"),
-        ("6", "Gỡ cài đặt / khôi phục app gốc"),
-        ("7", "Thoát"),
+        ("6", "Bật phát WiFi (hotspot) từ loa để điện thoại kết nối"),
+        ("7", "Gỡ cài đặt / khôi phục app gốc"),
+        ("8", "Thoát"),
     ]
     for k, t in items:
         print("   %s%s%s  %s" % (C.CYAN, k, C.RESET, t))
@@ -923,18 +1001,25 @@ def menu():
 
     if choice == "1":
         flow_install(argparse.Namespace(ip=None, apk=None, source="github", resolvers=None,
-                                        music_server=None, yes=False, pre=False))
+                                        music_server=None, yes=False, pre=False,
+                                        ai_server=None, ai_url=None, ai_token=None,
+                                        audio_quality=None))
     elif choice == "2":
         flow_update(argparse.Namespace(ip=None, apk=None, yes=False, pre=False, force=False))
     elif choice == "3":
         flow_install(argparse.Namespace(ip=None, apk=None, source="local", resolvers=None,
-                                        music_server=None, yes=False, pre=False))
+                                        music_server=None, yes=False, pre=False,
+                                        ai_server=None, ai_url=None, ai_token=None,
+                                        audio_quality=None))
     elif choice == "4":
-        args = argparse.Namespace(ip=None, resolvers=None, music_server=None, yes=False)
+        args = argparse.Namespace(ip=None, resolvers=None, music_server=None, yes=False,
+                                  ai_server=None, ai_url=None, ai_token=None, audio_quality=None)
         flow_config(args)
     elif choice == "5":
         flow_status(argparse.Namespace(ip=None))
     elif choice == "6":
+        flow_hotspot(argparse.Namespace(ip=None, yes=False, on=None, ssid=None, password=None))
+    elif choice == "7":
         flow_uninstall(argparse.Namespace(ip=None, yes=False))
     else:
         print("Tạm biệt!")
@@ -947,7 +1032,8 @@ def main():
         description="Tool cài đặt / cập nhật firmware %s cho loa Phicomm R1." % APP_NAME,
         epilog="Nguồn firmware: github.com/%s" % REPO)
     ap.add_argument("command", nargs="?", default=None,
-                    choices=["install", "update", "status", "config", "uninstall", "menu"],
+                    choices=["install", "update", "status", "config", "uninstall",
+                             "hotspot", "menu"],
                     help="Việc cần làm (bỏ trống = mở menu)")
     ap.add_argument("--ip", help="IP loa trong WiFi, ví dụ 192.168.2.20")
     ap.add_argument("--apk", help="Dùng file APK chỉ định thay vì tải GitHub")
@@ -955,6 +1041,19 @@ def main():
                     help="Nguồn APK: github (release) hoặc local (build trong máy)")
     ap.add_argument("--resolvers", help='Mảng JSON resolver, ví dụ \'[{"type":"custom","url":"http://x:8091"}]\'')
     ap.add_argument("--music-server", dest="music_server", help="URL máy chủ nhạc cuối cùng")
+    ap.add_argument("--ai-server", dest="ai_server",
+                    choices=["xiaozhi", "xiaozhi_self", "custom"],
+                    help="Máy chủ AI: xiaozhi (mặc định xiaozhi.me) | xiaozhi_self | custom")
+    ap.add_argument("--ai-url", dest="ai_url", help="URL WebSocket của máy chủ AI")
+    ap.add_argument("--ai-token", dest="ai_token", help="Token/API key cho máy chủ AI tự dựng")
+    ap.add_argument("--audio-quality", dest="audio_quality", choices=["high", "compat"],
+                    help="high = Opus chất lượng cao (mặc định), compat = AAC/m4a")
+    ap.add_argument("--on", dest="on", action="store_true", default=None,
+                    help="(hotspot) bật phát WiFi")
+    ap.add_argument("--off", dest="on", action="store_false",
+                    help="(hotspot) tắt phát WiFi")
+    ap.add_argument("--ssid", help="(hotspot) tên WiFi, mặc định R1-Y")
+    ap.add_argument("--password", help="(hotspot) mật khẩu WiFi, mặc định r1y12345678")
     ap.add_argument("--pre", action="store_true", help="Cho phép bản thử nghiệm (prerelease)")
     ap.add_argument("--force", action="store_true", help="Cài đè dù đã ở bản mới nhất")
     ap.add_argument("--yes", "-y", action="store_true", help="Không hỏi lại (dùng cho script/CI)")
@@ -982,6 +1081,8 @@ def main():
             flow_status(args)
         elif cmd == "config":
             flow_config(args)
+        elif cmd == "hotspot":
+            flow_hotspot(args)
         elif cmd == "uninstall":
             flow_uninstall(args)
     except RuntimeError as e:

@@ -8,7 +8,7 @@ import android.util.Log;
 import com.bachdathan.r1y.web.WebServer;
 
 /**
- * Web server của Lily R1 trên cổng 8088.
+ * Web server của R1-Y trên cổng 8088.
  * Phục vụ giao diện (như ảnh) + REST API cho Tube/LiteTube/R1-Y server.
  * Xem WebServer.java để biết danh sách endpoint.
  */
@@ -28,7 +28,7 @@ public class HTTPServerService extends Service {
             try {
                 server = new WebServer(this);
                 server.start();
-                Log.i(TAG, "WebServer Lily R1 đã chạy trên cổng 8088");
+                Log.i(TAG, "WebServer R1-Y đã chạy trên cổng 8088");
             } catch (Exception e) {
                 Log.e(TAG, "Không khởi động được WebServer: " + e.getMessage(), e);
             }

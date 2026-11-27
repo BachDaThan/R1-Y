@@ -1,5 +1,5 @@
 @echo off
-REM Cai firmware Lily R1 (R1-Y) cho loa Phicomm R1 qua cung WiFi (ADB over WiFi).
+REM Cai firmware R1-Y cho loa Phicomm R1 qua cung WiFi (ADB over WiFi).
 REM Dung: install.bat [IP_LOA]
 REM Vi du: install.bat 192.168.2.20
 REM Can: adb (Android SDK Platform Tools), file APK trong app\app\build\outputs\apk\release\
@@ -10,7 +10,7 @@ set PACKAGE_NAME=com.bachdathan.r1y
 set APK_PATH=app\app\build\outputs\apk\release\app-release.apk
 set R1_IP=%1
 
-echo === Cai Lily R1 (R1-Y) qua WiFi ===
+echo === Cai R1-Y qua WiFi ===
 echo.
 
 where adb >nul 2>nul

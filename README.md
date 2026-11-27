@@ -1,4 +1,4 @@
-# Lily R1 (R1-Y) — Firmware sạch cho loa Phicomm R1
+# R1-Y — Firmware sạch cho loa Phicomm R1
 
 Biến loa **Phicomm R1** (Android 5.1 / API 22, RK3229) thành trợ lý giọng nói
 Xiaozhi + loa phát nhạc YouTube. Viết lại sạch 100% từ
@@ -59,7 +59,7 @@ R1-Y/
 │   ├── service/            # Xiaozhi, Voice, Audio, LED, WebServer (8088)
 │   ├── youtube/            # ResolverManager, SearchManager
 │   ├── update/             # UpdateManager (GitHub BachDaThan/R1-Y)
-│   ├── web/                # Giao diện Lily R1 + REST API
+│   ├── web/                # Giao diện R1-Y + REST API
 │   └── config/             # XiaozhiConfig, R1YConfig
 ├── server/                 # Máy chủ nhạc cho PC (Tube/LiteTube style)
 │   └── r1y_server.py       # Invidious + Piped + custom, yt-dlp

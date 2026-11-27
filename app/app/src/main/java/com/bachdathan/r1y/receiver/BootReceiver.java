@@ -42,9 +42,22 @@ public class BootReceiver extends BroadcastReceiver {
                 Intent voiceIntent = new Intent(context, VoiceRecognitionService.class);
                 context.startService(voiceIntent);
 
-                // Start web server (giao diện Lily R1 trên cổng 8088)
+                // Start web server (giao diện R1-Y trên cổng 8088)
                 Intent httpIntent = new Intent(context, HTTPServerService.class);
                 context.startService(httpIntent);
+
+                // Tự phát WiFi (hotspot) nếu người dùng đã bật
+                try {
+                    final Context ctx = context.getApplicationContext();
+                    new Thread(new Runnable() {
+                        @Override
+                        public void run() {
+                            new com.bachdathan.r1y.hardware.HotspotManager(ctx).maybeAutoStart();
+                        }
+                    }, "R1Y-Hotspot").start();
+                } catch (Exception e) {
+                    Log.w(TAG, "Không tự bật hotspot: " + e.getMessage());
+                }
 
                 Log.d(TAG, "All services started successfully");
             } else {

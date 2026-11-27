@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==========================================================
-#  Lily R1 — Tool cài firmware cho loa Phicomm R1 (Linux/macOS)
+#  R1-Y — Tool cài firmware cho loa Phicomm R1 (Linux/macOS)
 #  Chỉ cần chạy: ./tools/r1y.sh      (hoặc bash tools/r1y.sh)
 #  Nguồn: github.com/BachDaThan/R1-Y
 # ==========================================================

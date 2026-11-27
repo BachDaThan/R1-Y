@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-R1-Y server - máy chủ nhạc cho loa Lily R1 (Phicomm R1).
+R1-Y server - máy chủ nhạc cho loa R1-Y (Phicomm R1).
 
 Kế thừa tìm kiếm chính xác từ:
 - Tube (BachDaThan/Tube): yt-dlp ytsearch/scsearch, nhận diện link,
@@ -70,7 +70,7 @@ YTDLP_URL = env("YTDLP_URL", "https://github.com/yt-dlp/yt-dlp/releases/latest/d
 YTDLP_ARGS = shlex.split(env("YTDLP_ARGS", ""))
 if env("COOKIES_FILE"):
     YTDLP_ARGS += ["--cookies", env("COOKIES_FILE")]
-AUDIO_FORMAT = env("AUDIO_FORMAT", "compat").lower()  # compat (AAC) | best (Opus)
+AUDIO_FORMAT = env("AUDIO_FORMAT", "high").lower()  # high (Opus, nghe hay hơn) | compat (AAC m4a)
 MAX_STREAMS = int(env("MAX_STREAMS", "4"))
 AUTO_UPDATE = env("AUTO_UPDATE", "1") != "0"
 
@@ -164,15 +164,22 @@ def video_info(vid):
 
 
 def pick_audio(d):
-    """Chọn luồng audio tốt nhất cho loa: compat (AAC m4a) hoặc best (Opus)."""
-    fmts = [f for f in (d.get("formats") or []) if f.get("acodec") not in (None, "none")]
+    """Chọn luồng audio tốt nhất cho loa.
+
+    AUDIO_FORMAT=high (mặc định) -> Opus/webm bitrate cao nhất (nghe hay nhất),
+                                    không có Opus thì lấy AAC tốt nhất.
+    AUDIO_FORMAT=compat           -> AAC/m4a (tương thích tối đa).
+    """
+    fmts = [f for f in (d.get("formats") or [])
+            if f.get("acodec") not in (None, "none") and f.get("url")]
     if not fmts:
         raise RuntimeError("Không có luồng audio")
-    if AUDIO_FORMAT == "best":
-        fmts.sort(key=lambda f: (f.get("abr") or 0), reverse=True)
-    else:
-        # Ưu tiên m4a (AAC) như Tube AUDIO_FORMAT=compat
+    if AUDIO_FORMAT in ("compat", "aac", "m4a"):
         fmts.sort(key=lambda f: (0 if f.get("ext") == "m4a" else 1, -(f.get("abr") or 0)))
+    else:
+        # Opus trước (chất lượng cao nhất YouTube cho audio), rồi theo bitrate
+        fmts.sort(key=lambda f: (0 if (f.get("acodec") or "").startswith("opus") else 1,
+                                 -(f.get("abr") or 0)))
     return fmts[0]
 
 
@@ -293,6 +300,12 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/search" and method == "GET":
                 q = (qs.get("q") or [""])[0]
                 return self._send(200, search_text(q, 20))
+            if path in ("/api/play", "/api/resolve") and method == "GET":
+                # Dán link YouTube vào là phát được luôn; không phải link thì tìm rồi phát
+                q = (qs.get("q") or qs.get("url") or qs.get("query") or [""])[0]
+                if not q.strip():
+                    return self._send(400, {"error": "thiếu ?q=link hoặc từ khóa"})
+                return self._send(200, self._resolve_query(q))
             m = re.fullmatch(r"/stream/([A-Za-z0-9_-]{11})", path)
             if m and method in ("GET", "HEAD"):
                 return self._stream(m.group(1), method == "HEAD")
@@ -318,6 +331,32 @@ class Handler(BaseHTTPRequestHandler):
                                  "audioSampleRate": "44100", "audioChannels": 2}],
             "formatStreams": [{"url": f"{base}/stream/{vid}", "itag": "18", "type": typ,
                                "container": f.get("ext") or "m4a"}],
+        }
+
+    def _resolve_query(self, q):
+        """Nhận link YouTube (watch?v=, youtu.be, shorts, live) hoặc từ khóa -> videoId + luồng."""
+        m = YT_ID_RE.search(q) or (YT_RE.match(q.strip()) and None)
+        vid = None
+        if m:
+            vid = m.group(1)
+        elif YT_RE.match(q.strip()):
+            vid = q.strip()
+        title = ""
+        if vid is None:
+            found = search_text(q, 1)
+            if not found:
+                raise RuntimeError("không tìm thấy: " + q)
+            vid = found[0]["videoId"]
+            title = found[0].get("title", "")
+        d = video_info(vid)
+        f = pick_audio(d)
+        base = self._base()
+        return {
+            "ok": True, "videoId": vid, "title": d.get("title") or title,
+            "author": d.get("uploader") or "", "duration": int(d.get("duration") or 0),
+            "audioUrl": base + "/stream/" + vid,
+            "ext": f.get("ext"), "abr": f.get("abr"), "codec": f.get("acodec"),
+            "quality": "high" if AUDIO_FORMAT not in ("compat", "aac", "m4a") else "compat",
         }
 
     def _piped_streams(self, vid):

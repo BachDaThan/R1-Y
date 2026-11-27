@@ -1,4 +1,4 @@
-// Top-level build file - R1-Y (Lily R1 firmware for Phicomm R1)
+// Top-level build file - R1-Y (R1-Y firmware for Phicomm R1)
 buildscript {
     repositories {
         google()

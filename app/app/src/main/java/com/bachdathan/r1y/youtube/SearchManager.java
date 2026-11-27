@@ -222,7 +222,7 @@ public class SearchManager {
         try {
             conn.setConnectTimeout(connectMs);
             conn.setReadTimeout(readMs);
-            conn.setRequestProperty("User-Agent", "LilyR1/1.4");
+            conn.setRequestProperty("User-Agent", "R1Y/1.4");
             conn.setRequestProperty("Accept", "application/json");
             int code = conn.getResponseCode();
             if (code != 200) throw new Exception("HTTP " + code + " " + urlStr);

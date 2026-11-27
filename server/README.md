@@ -1,4 +1,4 @@
-# R1-Y server — máy chủ nhạc cho loa Lily R1
+# R1-Y server — máy chủ nhạc cho loa R1-Y
 
 Máy chủ nhỏ (chỉ dùng thư viện chuẩn Python + `yt-dlp`) chạy trên PC Debian/Ubuntu
 trong cùng mạng LAN với loa Phicomm R1. Loa gọi về máy chủ này để lấy tiếng YouTube

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Cài firmware Lily R1 (R1-Y) cho loa Phicomm R1 qua cùng WiFi (ADB over WiFi).
+# Cài firmware R1-Y cho loa Phicomm R1 qua cùng WiFi (ADB over WiFi).
 # Dùng:  ./install.sh [IP_LOA]
 # Ví dụ: ./install.sh 192.168.2.20
 # Cần: adb (Android SDK Platform Tools), file APK trong app/build/outputs/apk/release/

@@ -4,7 +4,7 @@ import android.content.Context;
 import android.content.SharedPreferences;
 
 /**
- * Cấu hình trung tâm của Lily R1 (R1-Y).
+ * Cấu hình trung tâm của R1-Y.
  *
  * Lưu trong SharedPreferences "r1y_config":
  * - youtube_resolvers: mảng JSON [{"type":"piped|invidious|custom","url":"..."}]
@@ -28,6 +28,14 @@ public class R1YConfig {
     private static final String KEY_UPDATE_REPO = "update_repo";
     private static final String KEY_AUTO_CHECK = "update_auto_check";
     private static final String KEY_LAST_CHECK = "update_last_check";
+    private static final String KEY_AI_SERVER = "ai_server";
+    private static final String KEY_AI_URL = "ai_server_url";
+    private static final String KEY_AI_TOKEN = "ai_token";
+    private static final String KEY_HOTSPOT_ON = "hotspot_enabled";
+    private static final String KEY_HOTSPOT_SSID = "hotspot_ssid";
+    private static final String KEY_HOTSPOT_PASS = "hotspot_password";
+    private static final String KEY_HOTSPOT_AUTO = "hotspot_auto_start";
+    private static final String KEY_AUDIO_QUALITY = "audio_quality";
     private static final String KEY_DISC_PIPED = "discovered_piped";
     private static final String KEY_DISC_INV = "discovered_invidious";
     private static final String KEY_DISC_AT = "discovered_at";
@@ -136,5 +144,110 @@ public class R1YConfig {
             .remove(KEY_DISC_INV)
             .remove(KEY_DISC_AT)
             .apply();
+    }
+
+    // ================================================== máy chủ AI (trợ lý)
+
+    /** Preset máy chủ AI. id -> tên hiển thị + URL mặc định. */
+    public static final String[][] AI_PRESETS = {
+        // id,                 tên hiển thị,                    URL mặc định
+        {"xiaozhi",            "Xiaozhi.me (chính thức)",        "wss://xiaozhi.me/v1/ws"},
+        {"xiaozhi_self",       "Xiaozhi tự dựng (esp32-server)", "ws://192.168.1.100:8000/xiaozhi/v1/"},
+        {"custom",             "Tùy chỉnh (URL của bạn)",        ""},
+    };
+
+    public static String aiPresetName(String id) {
+        for (String[] p : AI_PRESETS) if (p[0].equals(id)) return p[1];
+        return id == null ? "?" : id;
+    }
+
+    public static String aiPresetUrl(String id) {
+        for (String[] p : AI_PRESETS) if (p[0].equals(id)) return p[2];
+        return "wss://xiaozhi.me/v1/ws";
+    }
+
+    /** Id preset đang dùng: xiaozhi (mặc định) | xiaozhi_self | custom. */
+    public String getAiServer() {
+        return prefs.getString(KEY_AI_SERVER, "xiaozhi");
+    }
+
+    public void setAiServer(String id) {
+        prefs.edit().putString(KEY_AI_SERVER, id == null ? "xiaozhi" : id).apply();
+    }
+
+    /** URL WebSocket đang dùng. Preset "custom" thì lấy URL người dùng nhập. */
+    public String getAiUrl() {
+        String id = getAiServer();
+        if ("custom".equals(id)) {
+            String u = prefs.getString(KEY_AI_URL, "");
+            return u.trim().isEmpty() ? aiPresetUrl("xiaozhi") : u.trim();
+        }
+        String saved = prefs.getString(KEY_AI_URL, "");
+        return saved.trim().isEmpty() ? aiPresetUrl(id) : saved.trim();
+    }
+
+    public void setAiUrl(String url) {
+        prefs.edit().putString(KEY_AI_URL, url == null ? "" : url.trim()).apply();
+    }
+
+    /**
+     * Token/API key dự phòng cho máy chủ tự dựng (nếu server không cấp token
+     * qua kích hoạt). Rỗng = dùng token lấy từ quy trình kích hoạt.
+     */
+    public String getAiToken() {
+        return prefs.getString(KEY_AI_TOKEN, "");
+    }
+
+    public void setAiToken(String token) {
+        prefs.edit().putString(KEY_AI_TOKEN, token == null ? "" : token.trim()).apply();
+    }
+
+    // ================================================== phát WiFi (hotspot)
+
+    /** Bật/tắt phát WiFi từ loa (điện thoại kết nối trực tiếp để cài đặt). */
+    public boolean isHotspotEnabled() {
+        return prefs.getBoolean(KEY_HOTSPOT_ON, false);
+    }
+
+    public void setHotspotEnabled(boolean on) {
+        prefs.edit().putBoolean(KEY_HOTSPOT_ON, on).apply();
+    }
+
+    public String getHotspotSsid() {
+        return prefs.getString(KEY_HOTSPOT_SSID, "R1-Y");
+    }
+
+    public void setHotspotSsid(String ssid) {
+        prefs.edit().putString(KEY_HOTSPOT_SSID, ssid == null || ssid.trim().isEmpty() ? "R1-Y" : ssid.trim()).apply();
+    }
+
+    public String getHotspotPassword() {
+        return prefs.getString(KEY_HOTSPOT_PASS, "r1y12345678");
+    }
+
+    public void setHotspotPassword(String pass) {
+        prefs.edit().putString(KEY_HOTSPOT_PASS,
+            pass == null || pass.trim().length() < 8 ? "r1y12345678" : pass.trim()).apply();
+    }
+
+    /** Tự bật phát WiFi khi loa khởi động. */
+    public boolean isHotspotAutoStart() {
+        return prefs.getBoolean(KEY_HOTSPOT_AUTO, true);
+    }
+
+    public void setHotspotAutoStart(boolean on) {
+        prefs.edit().putBoolean(KEY_HOTSPOT_AUTO, on).apply();
+    }
+
+    // ================================================== chất lượng âm thanh
+
+    /** "high" (mặc định: bitrate cao nhất, ưu tiên Opus) hoặc "compat" (AAC/m4a). */
+    public String getAudioQuality() {
+        return prefs.getString(KEY_AUDIO_QUALITY, "high");
+    }
+
+    public void setAudioQuality(String q) {
+        prefs.edit().putString(KEY_AUDIO_QUALITY,
+            "compat".equals(q) ? "compat" : "high").apply();
     }
 }

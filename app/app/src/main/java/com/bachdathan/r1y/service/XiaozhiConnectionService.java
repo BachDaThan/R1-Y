@@ -11,6 +11,7 @@ import android.util.Log;
 
 import com.bachdathan.r1y.activation.DeviceActivator;
 import com.bachdathan.r1y.activation.DeviceFingerprint;
+import com.bachdathan.r1y.config.R1YConfig;
 import com.bachdathan.r1y.config.XiaozhiConfig;
 import com.bachdathan.r1y.core.DeviceState;
 import com.bachdathan.r1y.core.EventBus;
@@ -251,7 +252,19 @@ public class XiaozhiConnectionService extends Service {
             Log.w(TAG, "Already connected");
             return;
         }
-        
+
+        R1YConfig r1y = new R1YConfig(this);
+        Log.i(TAG, "Máy chủ AI: " + r1y.getAiServer() + " -> " + r1y.getAiUrl());
+
+        // Máy chủ tự dựng/tùy chỉnh: dùng token dự phòng nếu có, không cần kích hoạt Xiaozhi
+        String fallbackToken = r1y.getAiToken();
+        if (!"xiaozhi".equals(r1y.getAiServer())
+                && fallbackToken != null && !fallbackToken.trim().isEmpty()) {
+            Log.i(TAG, "Dùng token dự phòng cho máy chủ AI tùy chỉnh");
+            connectWithToken(fallbackToken.trim());
+            return;
+        }
+
         // Check activation status
         if (!deviceActivator.isActivated()) {
             Log.i(TAG, "Device not activated - starting activation flow");
@@ -303,11 +316,12 @@ public class XiaozhiConnectionService extends Service {
         }
         
         try {
-            URI serverUri = new URI(XiaozhiConfig.WEBSOCKET_URL);
-            
+            String serverUrl = new R1YConfig(this).getAiUrl();
+            URI serverUri = new URI(serverUrl);
+
             // Enhanced logging for debugging
             Log.i(TAG, "=== WEBSOCKET CONNECTION ===");
-            Log.i(TAG, "URL: " + XiaozhiConfig.WEBSOCKET_URL);
+            Log.i(TAG, "URL: " + serverUrl);
             Log.i(TAG, "Token (first 30 chars): " + (accessToken.length() > 30 ? accessToken.substring(0, 30) + "..." : accessToken));
             Log.i(TAG, "Token length: " + accessToken.length());
             Log.i(TAG, "============================");

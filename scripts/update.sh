@@ -1,5 +1,5 @@
 #!/bin/bash
-# Cập nhật firmware Lily R1 từ GitHub Releases (BachDaThan/R1-Y) qua cùng WiFi.
+# Cập nhật firmware R1-Y từ GitHub Releases (BachDaThan/R1-Y) qua cùng WiFi.
 # Dùng:  ./update.sh [IP_LOA]
 # Ví dụ: ./update.sh 192.168.2.20
 # Luồng: kiểm tra bản mới nhất -> tải APK -> cài qua ADB WiFi -> khởi động lại app.
@@ -54,7 +54,7 @@ info "Bản mới nhất: $TAG"
 CURRENT=$(adb shell dumpsys package "$PACKAGE_NAME" 2>/dev/null | grep versionName | head -1 | sed 's/.*=//' | tr -d '\r' || echo "")
 info "Bản trên loa: ${CURRENT:-chưa cài}"
 
-TMP_APK="/tmp/LilyR1-${TAG}.apk"
+TMP_APK="/tmp/R1Y-${TAG}.apk"
 info "Tải APK..."
 curl -fL -o "$TMP_APK" "$APK_URL"
 
