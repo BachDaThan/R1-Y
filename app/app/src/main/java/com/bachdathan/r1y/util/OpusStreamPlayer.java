@@ -64,7 +64,7 @@ public final class OpusStreamPlayer {
         if (samples <= 0) {
             framesBad++;
             // Khung hỏng giữa câu: chèn im lặng để không bị méo tiếng.
-            write(new byte[Math.max(2, lastFrameBytes * 2)], 0);
+            write(new byte[Math.max(2, (int) lastFrameBytes * 2)], 0);
             return;
         }
         framesOk++;
