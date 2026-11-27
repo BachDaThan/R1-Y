@@ -55,7 +55,7 @@ dependencies {
     compile 'com.squareup.okhttp3:okhttp:3.12.13'
 
     // JSON
-    compile 'com.google.code.gson:gson:2.8.5'
+    compile 'com.google.code.gson:gson:2.15.0'
 
     // Log
     compile 'com.jakewharton.timber:timber:4.5.1'
