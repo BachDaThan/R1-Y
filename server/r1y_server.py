@@ -163,24 +163,69 @@ def video_info(vid):
     raise RuntimeError(errs[0] if errs else "yt-dlp lỗi")
 
 
-def pick_audio(d):
-    """Chọn luồng audio tốt nhất cho loa.
+def audio_ladder(d):
+    """Thang chất lượng có tự hạ cấp (tốt nhất trước).
 
-    AUDIO_FORMAT=high (mặc định) -> Opus/webm bitrate cao nhất (nghe hay nhất),
-                                    không có Opus thì lấy AAC tốt nhất.
-    AUDIO_FORMAT=compat           -> AAC/m4a (tương thích tối đa).
+    Bậc 1-2: Opus (webm) ≥128k / <128k
+    Bậc 3-4: AAC/m4a ≥128k / <128k
+    Bậc 5  : codec audio khác (vorbis, mp3...)
+    Bậc 6  : âm thanh lấy từ luồng video (khi server chỉ trả video có tiếng)
+
+    AUDIO_FORMAT=compat -> đảo ưu tiên AAC lên trước Opus.
     """
-    fmts = [f for f in (d.get("formats") or [])
-            if f.get("acodec") not in (None, "none") and f.get("url")]
-    if not fmts:
-        raise RuntimeError("Không có luồng audio")
-    if AUDIO_FORMAT in ("compat", "aac", "m4a"):
-        fmts.sort(key=lambda f: (0 if f.get("ext") == "m4a" else 1, -(f.get("abr") or 0)))
-    else:
-        # Opus trước (chất lượng cao nhất YouTube cho audio), rồi theo bitrate
-        fmts.sort(key=lambda f: (0 if (f.get("acodec") or "").startswith("opus") else 1,
-                                 -(f.get("abr") or 0)))
-    return fmts[0]
+    high = AUDIO_FORMAT not in ("compat", "aac", "m4a")
+    out = []
+    for f in (d.get("formats") or []):
+        url = f.get("url")
+        if not url:
+            continue
+        acodec = (f.get("acodec") or "").lower()
+        vcodec = (f.get("vcodec") or "").lower()
+        has_audio = acodec not in ("", "none")
+        is_video = vcodec not in ("", "none")
+        if not has_audio:
+            continue
+        abr = float(f.get("abr") or 0)
+        ext = (f.get("ext") or "").lower()
+        if is_video:
+            kind, tier = "video", 6
+        elif "opus" in acodec:
+            kind, tier = "opus", (1 if abr >= 128 else 2)
+        elif "mp4a" in acodec or "aac" in acodec or ext == "m4a":
+            kind, tier = "aac", (3 if abr >= 128 else 4)
+        else:
+            kind, tier = "other", 5
+        if not high and kind in ("opus", "aac"):
+            tier = {1: 3, 2: 4, 3: 1, 4: 2}[tier]
+        out.append({"url": url, "tier": tier, "kind": kind, "abr": abr,
+                    "ext": ext, "acodec": acodec, "fmt": f})
+    if not out:
+        raise RuntimeError("Không có luồng audio nào dùng được")
+    out.sort(key=lambda c: (c["tier"], -c["abr"]))
+    # khử trùng lặp URL
+    seen, uniq = set(), []
+    for c in out:
+        if c["url"] in seen:
+            continue
+        seen.add(c["url"])
+        uniq.append(c)
+    return uniq
+
+
+def pick_audio(d):
+    """Chọn luồng audio tốt nhất (bậc đầu của thang)."""
+    return audio_ladder(d)[0]["fmt"]
+
+
+def ladder_json(d):
+    """Thang cho API: [{"tier":1,"label":"Opus cao","abr":160,...}]"""
+    labels = {1: "Opus chất lượng cao", 2: "Opus tiết kiệm", 3: "AAC chất lượng cao",
+              4: "AAC tiết kiệm", 5: "Codec khác", 6: "Âm thanh từ video"}
+    out = []
+    for c in audio_ladder(d):
+        out.append({"tier": c["tier"], "label": labels.get(c["tier"], "?"),
+                    "codec": c["kind"], "abr": c["abr"], "ext": c["ext"]})
+    return out
 
 
 def search_text(q, n):
@@ -349,14 +394,17 @@ class Handler(BaseHTTPRequestHandler):
             vid = found[0]["videoId"]
             title = found[0].get("title", "")
         d = video_info(vid)
-        f = pick_audio(d)
+        best = audio_ladder(d)[0]
+        f = best["fmt"]
         base = self._base()
         return {
             "ok": True, "videoId": vid, "title": d.get("title") or title,
             "author": d.get("uploader") or "", "duration": int(d.get("duration") or 0),
             "audioUrl": base + "/stream/" + vid,
-            "ext": f.get("ext"), "abr": f.get("abr"), "codec": f.get("acodec"),
+            "tier": best["tier"], "ext": f.get("ext"), "abr": f.get("abr"),
+            "codec": f.get("acodec"),
             "quality": "high" if AUDIO_FORMAT not in ("compat", "aac", "m4a") else "compat",
+            "ladder": ladder_json(d),
         }
 
     def _piped_streams(self, vid):
@@ -378,17 +426,33 @@ class Handler(BaseHTTPRequestHandler):
                 "audioStreams": audio, "videoStreams": []}
 
     def _stream(self, vid, head_only):
+        """Phát luồng audio. Tự hạ chất lượng dần nếu bậc cao bị lỗi (403/hết hạn)."""
         with _active_lock:
             if _active[0] >= MAX_STREAMS:
                 return self._send(503, {"error": "Máy đang bận, thử lại sau"})
             _active[0] += 1
         try:
             d = video_info(vid)
-            f = pick_audio(d)
-            url = f.get("url")
-            if not url:
-                return self._send(500, {"error": "không có url luồng"})
-            mime = "audio/mp4" if f.get("ext") == "m4a" else "audio/webm"
+            ladder = audio_ladder(d)
+            last = None
+            # Thử từng bậc: Opus cao -> Opus thấp -> AAC -> codec khác -> audio từ video
+            for cand in ladder:
+                ok, last = self._pipe(cand, head_only, vid)
+                if ok:
+                    return
+                log(f"Bậc {cand['tier']} ({cand['kind']}) lỗi: {last} — hạ bậc")
+            return self._send(502, {"error": f"không lấy được luồng nào ({last})"})
+        finally:
+            with _active_lock:
+                _active[0] -= 1
+
+    def _pipe(self, cand, head_only, vid):
+        """Mở một luồng upstream và chuyển tiếp. Trả về (thành_công, lỗi)."""
+        url = cand["url"]
+        mime = "audio/mp4" if cand["ext"] in ("m4a", "mp4") else "audio/webm"
+        if cand["kind"] == "video":
+            mime = "video/mp4"
+        try:
             req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
             rng = self.headers.get("Range")
             if rng:
@@ -396,6 +460,8 @@ class Handler(BaseHTTPRequestHandler):
             with urllib.request.urlopen(req, timeout=30) as r:
                 self.send_response(r.status)
                 self.send_header("Content-Type", mime)
+                self.send_header("X-R1Y-Tier", str(cand["tier"]))
+                self.send_header("X-R1Y-Codec", cand["kind"])
                 for k in ("Content-Length", "Content-Range", "Accept-Ranges"):
                     v = r.headers.get(k)
                     if v:
@@ -403,15 +469,18 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_header("Access-Control-Allow-Origin", "*")
                 self.end_headers()
                 if not head_only:
-                    shutil.copyfileobj(r, self.wfile, 65536)
+                    try:
+                        shutil.copyfileobj(r, self.wfile, 65536)
+                    except (BrokenPipeError, ConnectionResetError):
+                        pass  # loa ngắt kết nối — không phải lỗi
+            return True, None
         except urllib.error.HTTPError as e:
             if e.code == 403:
                 with _cache_lock:
                     _info_cache.pop(vid, None)
-            return self._send(502, {"error": f"upstream {e.code}"})
-        finally:
-            with _active_lock:
-                _active[0] -= 1
+            return False, f"upstream {e.code}"
+        except Exception as e:
+            return False, str(e)[:120]
 
 
 def main():

@@ -7,6 +7,12 @@ Có luôn **tùy chọn cập nhật firmware** và **gỡ/khôi phục**.
 
 ## Chạy
 
+**Điện thoại Android (Termux)**
+```sh
+bash tools/termux_setup.sh     # tự cài python/adb/curl nếu thiếu (an toàn)
+bash tools/r1y_termux.sh       # menu riêng: cài fw, cấu hình WiFi, hotspot, AI
+```
+
 **Windows** — bấm đúp `tools/r1y.bat`
 
 **macOS / Linux**
@@ -27,9 +33,10 @@ Menu hiện ra:
 3  Cài bản build trong máy (APK dev)
 4  Cấu hình máy chủ YouTube cho loa
 5  Kiểm tra trạng thái loa
-6  Bật phát WiFi (hotspot) từ loa để điện thoại kết nối
-7  Gỡ cài đặt / khôi phục app gốc
-8  Thoát
+6  Cấu hình WiFi nhà cho loa (quét + nối)
+7  Bật phát WiFi (hotspot) từ loa để điện thoại kết nối
+8  Gỡ cài đặt / khôi phục app gốc
+9  Thoát
 ```
 
 Cần: **Python 3** và **mạng Internet**. Tool tự tải **adb (Android Platform Tools)**
@@ -60,6 +67,16 @@ python3 tools/r1y.py install --ip 192.168.2.20 --apk ./R1Y-v1.5.0-release.apk
 # Cài bản vừa build trong repo
 python3 tools/r1y.py install --ip 192.168.2.20 --source local
 ```
+
+### Cấu hình WiFi nhà cho loa
+
+Khi loa đang ở chế độ cài đặt (giữ nút tròn), điện thoại đã nối WiFi `R1-Y`:
+
+```sh
+python3 tools/r1y.py wifi --ip 192.168.43.1
+```
+Tool in danh sách WiFi quét được → chọn số → nhập mật khẩu → loa vào WiFi nhà,
+tool in ra **IP mới** để cài firmware tiếp.
 
 ### Phát WiFi từ loa
 

@@ -67,6 +67,45 @@ giống cách Tube/LiteTube tự đổi player client khi lỗi.
 Điện thoại nối WiFi `R1-Y` → mở `http://192.168.43.1:8088`.
 Web: tab **Nhà** (`GET/POST /api/hotspot`).
 
+## Chế độ cài đặt WiFi (onboarding)
+
+```
+Giữ nút tròn trên loa
+      ↓
+HotspotManager.enable()          loa phát WiFi "R1-Y"
+      ↓  điện thoại nối vào
+http://192.168.43.1:8088         giao diện web của loa
+      ↓  POST /api/wifi/scan
+WifiProvisioner.scan()           quét WiFi quanh loa (SSID, khoá/mở, đã lưu)
+      ↓  POST /api/wifi/connect {ssid, password}
+WifiProvisioner.connect()        tắt hotspot → thêm cấu hình → chờ IP (25s)
+      ↓
+loa vào WiFi nhà → IP dải 192.168.x.x → cùng mạng điện thoại/PC
+      ↓
+tools/r1y.py install --ip <IP>   cài firmware qua LAN (ADB WiFi)
+```
+
+Tự động: `BootReceiver` kiểm tra chưa có WiFi nhà (`home_wifi_ssid` rỗng hoặc
+mất Internet) thì tự bật chế độ cài đặt + hotspot.
+
+## Thang âm thanh tự hạ cấp
+
+`youtube/AudioFallback.java` xếp hạng mọi luồng của server thành 6 bậc:
+
+| Bậc | Loại |
+|---|---|
+| 1 | Opus ≥128k |
+| 2 | Opus <128k |
+| 3 | AAC ≥128k |
+| 4 | AAC <128k |
+| 5 | Codec khác |
+| 6 | Âm thanh từ luồng video |
+
+`ResolverManager` trả cả thang (`Resolved.ladder`); `AudioPlaybackService`
+giữ `ladderIndex`, khi `MediaPlayer.onError` thì `ladderIndex++` và phát URL
+bậc dưới; hết thang mới đổi sang máy chủ kế tiếp. Server PC làm tương tự trong
+`_stream()` → `_pipe()` với header `X-R1Y-Tier`.
+
 ## Máy chủ AI (trợ lý)
 
 `config/R1YConfig` giữ preset: `xiaozhi` (mặc định, `wss://xiaozhi.me/v1/ws`),

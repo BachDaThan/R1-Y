@@ -15,13 +15,17 @@ thật, không còn hàng chục file ghi chú thừa.
   [LiteTube](https://github.com/BachDaThan/LiteTube) (Piped API, luồng audio
   xếp bitrate cao nhất).
 - 📶 **Cài qua cùng WiFi** bằng ADB (`scripts/install.sh`), không cần USB.
-- 📡 **Phát WiFi từ chính loa** (hotspot `R1-Y`): không có router vẫn cài đặt được,
-  điện thoại nối trực tiếp vào loa rồi mở `http://192.168.43.1:8088`.
+- 📡 **Chế độ cài đặt WiFi** (giữ nút tròn trên loa): loa phát WiFi `R1-Y` →
+  điện thoại nối vào → **quét + chọn WiFi nhà + nhập mật khẩu** → loa vào WiFi nhà
+  → giờ mới cài firmware qua mạng nội bộ.
+- 📱 **Tool trên điện thoại (Termux)**: `bash tools/r1y_termux.sh` — tự cài thư viện
+  thiếu, lỗi được dịch thành gợi ý dễ hiểu, không cần mò.
 - 🤖 **Chọn máy chủ AI**: mặc định `xiaozhi.me`, đổi được sang Xiaozhi tự dựng
   (esp32-server) hoặc URL riêng + token trong tab **Trợ lý**.
 - 🎧 **Dán link YouTube là phát** — dán link vào ô **Phát nhạc**, loa tự lấy tiếng.
-- 🔊 **Âm thanh chất lượng cao**: mặc định ưu tiên **Opus** bitrate cao nhất,
-  có tùy chọn *Tương thích (AAC/m4a)* nếu thiết bị không đọc được Opus.
+- 🔊 **Âm thanh chất lượng cao + tự hạ cấp**: thang 6 bậc
+  *Opus cao → Opus thấp → AAC cao → AAC thấp → codec khác → âm thanh từ video*.
+  Bậc nào lỗi thì tự hạ xuống bậc dưới, nên máy chủ công cộng nào cũng lấy được tiếng.
 - 🔄 **Nút Cập nhật trong giao diện** (`http://IP_LOA:8088` → Thêm),
   nguồn duy nhất là **GitHub Releases của repo này** (`BachDaThan/R1-Y`).
 - 🤖 **Bot GitHub kiểm tra đàng hoàng**: CI build APK + tạo Release,
@@ -102,7 +106,19 @@ Xem [docs/YOUTUBE_RESOLVER.md](docs/YOUTUBE_RESOLVER.md).
 | **Nhà** | **Phát WiFi từ loa** (SSID/mật khẩu), tự bật khi khởi động |
 | **Thêm** | Cập nhật firmware từ GitHub Releases |
 
-### Phát WiFi từ loa
+### Chế độ cài đặt WiFi (giữ nút tròn)
+
+1. **Giữ nút tròn trên loa** (hoặc bật ở tab **Nhà**, hoặc `tools/r1y.py hotspot`).
+2. Loa phát WiFi tên **R1-Y** (mật khẩu mặc định `r1y12345678`).
+3. Điện thoại nối WiFi `R1-Y` → mở `http://192.168.43.1:8088`.
+4. Mục **Cài đặt WiFi** → **Quét WiFi** → chọn WiFi nhà → nhập mật khẩu → **Kết nối**.
+5. Loa vào WiFi nhà, tự tắt hotspot, trả về IP dải nhà → lúc này mới cài firmware qua LAN.
+   ```sh
+   python3 tools/r1y.py wifi --ip 192.168.43.1     # làm cả bước 4-5 từ terminal
+   python3 tools/r1y.py install --ip <IP_MOI>      # cài firmware qua mạng nội bộ
+   ```
+
+### Bật phát WiFi thủ công
 
 Bật ở tab **Nhà** hoặc:
 ```sh
@@ -119,6 +135,20 @@ Tab **Trợ lý** → chọn → **Lưu** → khởi động lại app.
 python3 tools/r1y.py config --ip <IP_LOA> --ai-server custom \
   --ai-url ws://192.168.1.50:8000/xiaozhi/v1/ --ai-token <token>
 ```
+
+## Dùng trên điện thoại (Termux)
+
+```sh
+pkg install git python
+git clone https://github.com/BachDaThan/R1-Y
+cd R1-Y
+bash tools/termux_setup.sh      # tự cài phần còn thiếu (an toàn)
+bash tools/r1y_termux.sh        # menu riêng cho điện thoại
+```
+
+Tool tự cài `python`, `android-tools` (adb), `curl` nếu thiếu — chỉ dùng `pkg`
+chính thức của Termux, không tải script lạ. Lỗi kỹ thuật được dịch thành gợi ý
+(ví dụ "Loa chưa phản hồi — kiểm tra cùng WiFi") thay vì đổ traceback.
 
 ## Cập nhật
 

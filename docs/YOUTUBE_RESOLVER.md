@@ -101,12 +101,21 @@ Khi bạn có máy chủ riêng (R1-Y server, Tube, LiteTube bridge...), thay `[
 
 Không phải link thì loa tự tìm, lấy kết quả đầu rồi phát.
 
-## Chất lượng âm thanh
+## Chất lượng âm thanh — thang tự hạ cấp
 
-| Chọn | Ý nghĩa |
-|---|---|
-| **Cao nhất (Opus)** — mặc định | Ưu tiên Opus (`audio/webm`, ống 251) bitrate cao nhất, nghe hay nhất |
-| **Tương thích (AAC/m4a)** | Ưu tiên AAC, dùng khi thiết bị không đọc được Opus |
+Loa thử lần lượt từng bậc, bậc nào lỗi thì **tự hạ xuống bậc dưới** (không báo lỗi):
+
+| Bậc | Loại | Ghi chú |
+|---|---|---|
+| 1 | Opus ≥128kbps | Tốt nhất, YouTube thường 160kbps |
+| 2 | Opus <128kbps | Khi mạng yếu / server giới hạn |
+| 3 | AAC/m4a ≥128kbps | Tương thích cao |
+| 4 | AAC/m4a <128kbps | |
+| 5 | Codec khác (vorbis, mp3) | Server lạ |
+| 6 | **Âm thanh từ luồng video** | Cứu cánh khi server chỉ trả video có tiếng |
+
+Vì có bậc 6, gần như **mọi server công cộng đều lấy được tiếng**, kể cả video thường.
+`AUDIO_FORMAT=high` (mặc định) ưu tiên Opus trước; `compat` đảo AAC lên trước.
 
 Đổi ở tab **Nhạc** → *Chất lượng âm thanh*, hoặc:
 ```sh
