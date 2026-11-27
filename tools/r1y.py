@@ -598,6 +598,18 @@ def scan_for_loa_ip(progress=True):
     return hosts[0][0] if hosts else None
 
 
+def port_open(ip, port, timeout=1.0):
+    """Cổng có mở không (nhanh, không cần adb)."""
+    try:
+        c = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        c.settimeout(timeout)
+        ok_ = c.connect_ex((ip, port)) == 0
+        c.close()
+        return ok_
+    except Exception:
+        return False
+
+
 def web_alive(ip, port=None, timeout=4):
     """Loa còn sống không? Thử mở API web của loa (nhanh, không cần adb)."""
     try:
@@ -688,10 +700,25 @@ def adb_connect_smart(host, port=None, tries=3, verbose=True):
     return None
 
 
+HOTSPOT_IP = "192.168.43.1"   # IP loa khi phát WiFi riêng (chế độ cài đặt)
+
+
 def connect_device(ip=None, interactive=True):
     """Bảo đảm có 1 loa đang kết nối, trả về (serial, ip)."""
     find_adb()
     title("Tìm loa Phicomm R1")
+
+    # Trên firmware gốc, ADB (cổng 5555) CHỈ mở khi loa phát WiFi riêng.
+    # Nên thử 192.168.43.1 trước — đúng cách các tool khác vẫn làm.
+    if not ip:
+        rows = devices_raw()
+        if any(st == "device" for _, st in rows):
+            dev = [d for d, st in rows if st == "device"][0]
+            return dev, (dev.split(":")[0] if ":" in dev else None)
+        if web_alive(HOTSPOT_IP, timeout=2) or port_open(HOTSPOT_IP, ADB_PORT):
+            info("Thấy loa ở %s (WiFi do loa phát)…" % HOTSPOT_IP)
+            if adb_connect_smart(HOTSPOT_IP):
+                return "%s:%d" % (HOTSPOT_IP, ADB_PORT), HOTSPOT_IP
 
     if ip:
         ip = re.sub(r":\d+$", "", ip)
@@ -1028,12 +1055,27 @@ def get_apk(source="github", apk_path=None, include_prerelease=False):
 
 # ----------------------------------------------------------------- cài đặt
 def adb_install(serial, apk_path):
-    """Cài APK: push + pm install (tương thích Android 5.1), fallback adb install."""
-    remote = "/data/local/tmp/r1y-install.apk"
+    """
+    Cài APK lên loa. Dùng đúng cách đã được chứng minh trên Phicomm R1:
+        adb push <apk> /data/local/tmp/
+        adb shell /system/bin/pm install -r /data/local/tmp/<apk>
+    (gọi pm qua đường dẫn tuyệt đối — một số ROM stock thiếu PATH trong shell)
+    """
+    import posixpath
+    remote_dir = "/data/local/tmp"
+    remote = posixpath.join(remote_dir, os.path.basename(apk_path) or "r1y.apk")
     info("Đang chuyển APK lên loa…")
     adb("push", apk_path, remote, timeout=900)
     info("Đang cài…")
-    rc, out = adb("-s", serial, "shell", "pm", "install", "-t", "-r", remote, timeout=900)
+    rc, out = adb("-s", serial, "shell", "/system/bin/pm", "install", "-r", remote,
+                  timeout=900, allow_fail=True)
+    if rc != 0 or "Success" not in out:
+        # thử thêm -t (cho phép APK test-only) rồi đường dẫn pm thường
+        rc, out = adb("-s", serial, "shell", "/system/bin/pm", "install", "-r", "-t",
+                      remote, timeout=900, allow_fail=True)
+    if rc != 0 or "Success" not in out:
+        rc, out = adb("-s", serial, "shell", "pm", "install", "-t", "-r", remote,
+                      timeout=900, allow_fail=True)
     if rc != 0 or "Success" not in out:
         warn("pm install lỗi, thử adb install: %s" % out.splitlines()[-1] if out else "")
         rc2, out2 = adb("-s", serial, "install", "-t", "-r", apk_path, timeout=900)
@@ -1474,6 +1516,46 @@ def flow_hotspot(args):
             ok("IP hiện tại của loa: %s" % m.group(1))
 
 
+STOCK_WIFI_API = "http://%s:8989/api/configwifi"
+
+
+def configure_wifi_stock(ssid=None, password=None, host=None):
+    """
+    Cấu hình WiFi nhà cho loa qua API gốc của Phicomm R1 (port 8989).
+    Dùng được NGAY cả khi chưa cài R1-Y — loa đang phát WiFi riêng.
+    """
+    host = host or HOTSPOT_IP
+    title("Cấu hình WiFi cho loa (qua loa đang phát WiFi)")
+    if not ssid:
+        ssid = ask("Tên WiFi nhà (SSID)")
+    if not ssid:
+        die("Chưa nhập tên WiFi.")
+    if password is None:
+        password = ask("Mật khẩu WiFi (Enter nếu không mật khẩu)")
+    secure = "WPA" if password else "INSECURE"
+
+    payload = {"ssid": ssid, "secure": secure, "password": password or "", "mac": ""}
+    url = STOCK_WIFI_API % host
+    info("Đang gửi cấu hình tới loa %s…" % host)
+    try:
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(url, data=data, method="POST",
+                                     headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=20) as r:
+            r.read()
+        ok("Đã gửi cấu hình WiFi (%s) tới loa." % ssid)
+        info("Loa sẽ tự nối WiFi nhà sau ~10-20 giây và TẮT WiFi riêng.")
+        info("Sau đó tìm IP mới của loa rồi cài firmware:")
+        print("    1) r1y  → chọn 5 (kiểm tra trạng thái, tool tự dò IP)")
+        print("    2) r1y  → chọn 1 (cài firmware)")
+        return True
+    except Exception as e:
+        warn("Không gửi được tới %s: %s" % (url, explain_error(str(e))))
+        print("  • Điện thoại đã nối WiFi do loa phát chưa? (tên kiểu Phicomm_R1_XXXX)")
+        print("  • Thử mở http://%s:8989 bằng trình duyệt để kiểm tra" % host)
+        return False
+
+
 def flow_wifi(args):
     """Cấu hình WiFi nhà cho loa qua giao diện web (chế độ cài đặt)."""
     ip = args.ip or "192.168.43.1"
@@ -1822,7 +1904,12 @@ def _menu_once():
     elif choice == "5":
         flow_status(argparse.Namespace(ip=None))
     elif choice == "6":
-        flow_wifi(argparse.Namespace(ip=None))
+        ip = ask("IP loa (Enter = %s nếu đang nối WiFi của loa)" % HOTSPOT_IP) or HOTSPOT_IP
+        if not web_alive(ip, timeout=2):
+            # Firmware gốc: dùng API 8989
+            configure_wifi_stock(host=ip)
+        else:
+            flow_wifi(argparse.Namespace(ip=ip))
     elif choice == "7":
         flow_hotspot(argparse.Namespace(ip=None, yes=False, on=None, ssid=None, password=None))
     elif choice == "8":
