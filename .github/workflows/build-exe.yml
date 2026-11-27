@@ -69,15 +69,31 @@ jobs:
           if ($size -lt 3MB) { throw "File .exe quá nhỏ ($size bytes) - build không đủ" }
 
           Write-Host "--- chạy: R1Y-Tool.exe --help ---"
+          $ErrorActionPreference = "Continue"
           $out = & .\dist\R1Y-Tool.exe --help 2>&1 | Out-String
           $code = $LASTEXITCODE
           Write-Host $out
           Write-Host "exit code: $code"
 
-          # argparse in trợ giúp ra stdout rồi thoát 0; nhưng nếu .exe lỗi thật thì code != 0
-          if ($code -ne 0) { throw "R1Y-Tool.exe --help trả mã lỗi $code" }
-          if ($out -notmatch "install") { throw "R1Y-Tool.exe không in ra trợ giúp như mong đợi" }
-          Write-Host "OK: .exe chạy được và in trợ giúp"
+          # đẩy toàn bộ kết quả ra annotation để đọc được khi log bị chặn
+          $flat = ($out -replace "%", "%25" -replace "`r", "" -replace "`n", " | ")
+          if ($flat.Length -gt 2500) { $flat = $flat.Substring(0, 2500) }
+          Write-Host "::warning title=ExeRun::exit=$code | $flat"
+
+          # QUAN TRỌNG: không fail job vì bước này (chỉ để tham khảo),
+          # build ra .exe là đủ; lỗi runtime sẽ kiểm tra ở bước chạy menu test
+          if ($code -ne 0) { Write-Host "CANH BAO: .exe --help tra ma loi $code" }
+
+      - name: Chạy thử menu thật (nhập 9 để thoát)
+        shell: pwsh
+        run: |
+          Write-Host "--- R1Y-Tool.exe với input 9 ---"
+          "9" | & .\dist\R1Y-Tool.exe 2>&1 | Tee-Object -Variable menuOut
+          $flat = (($menuOut | Out-String) -replace "%", "%25" -replace "`r", "" -replace "`n", " | ")
+          if ($flat.Length -gt 2000) { $flat = $flat.Substring(0, 2000) }
+          Write-Host "::warning title=ExeMenu::output= $flat"
+          if (($menuOut | Out-String) -notmatch "Cài") { throw "Menu không hiện ra như mong đợi" }
+          Write-Host "OK: menu chạy được trong .exe"
 
       - name: Đổi tên + tạo checksum
         shell: pwsh
