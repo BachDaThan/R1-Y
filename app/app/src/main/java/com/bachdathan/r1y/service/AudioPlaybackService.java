@@ -175,7 +175,9 @@ public class AudioPlaybackService extends Service implements
         
         mediaPlayer = new MediaPlayer();
         mediaPlayer.setWakeMode(getApplicationContext(), PowerManager.PARTIAL_WAKE_LOCK);
-        mediaPlayer.setAudioStreamType(AudioManager.STREAM_MUSIC);
+        // Loa R1: STREAM_MUSIC không ra loa ngoài -> dùng STREAM_SYSTEM (mặc định),
+        // đổi được trên web (tab Nhạc) nếu ROM khác.
+        mediaPlayer.setAudioStreamType(com.bachdathan.r1y.util.AudioDiag.streamType(this));
         mediaPlayer.setOnPreparedListener(this);
         mediaPlayer.setOnCompletionListener(this);
         mediaPlayer.setOnErrorListener(this);
@@ -203,7 +205,7 @@ public class AudioPlaybackService extends Service implements
             // Request audio focus
             int result = audioManager.requestAudioFocus(
                 audioFocusChangeListener,
-                AudioManager.STREAM_MUSIC,
+                com.bachdathan.r1y.util.AudioDiag.streamType(this),
                 AudioManager.AUDIOFOCUS_GAIN
             );
             

@@ -35,3 +35,19 @@ Trang cấu hình của R1-Y là **cổng 8088** (`http://IP_LOA:8088`), port **
 3. Muốn quay lại R1-Y: gỡ app của nhóm rồi `python3 tools/r1y.py install --ip <IP>`.
 
 Đừng chạy hai tool cùng lúc trên một loa.
+
+## Nguồn tham khảo khác về loa R1 (đã đối chiếu, có áp dụng)
+
+| Nguồn | Dùng được gì cho R1-Y |
+|---|---|
+| `github.com/Enter-tainer/phicomm-r1-voice-assistant` (đã chạy trên loa thật) | **STREAM_MUSIC không ra loa ngoài** → phải dùng `STREAM_SYSTEM`. Cách cài `pm install` phải chạy **nền** trên R1. Unisound chiếm micro. Mic R1 rất kém (cần gain lớn). Android 5.1 không có Opus. |
+| `heylily.net/firmware` | Chủ yếu là **mạch ESP32** (Lily Box/Touch/CYD…). Mục “Phicomm R1” chỉ là **file tải về cho Windows** — nạp firmware kiểu khác, không dùng cho R1-Y và không có mã nguồn. |
+| `nguyentanduyen885/banhmi-r1-releases` | Xác nhận: ẩn Unisound để không giành micro; nút trên đỉnh loa giữ ~5-6 giây để phát WiFi cài đặt; trang điều khiển cũng ở cổng 8088. |
+
+R1-Y **không** dùng lại mã của các dự án đó, chỉ áp dụng *kết luận kỹ thuật* đã kiểm chứng
+trên cùng phần cứng:
+
+- `R1YConfig.getAudioRoute()` — mặc định `system` (STREAM_SYSTEM), đổi được trên web.
+- `tools/r1y.py adb_install()` — push + `pm install` **chạy nền**, đọc file kết quả.
+- `hide_unisound()` trong bước cài.
+- `AudioFallback.deviceSupportsOpus()` — không chọn Opus khi máy không có bộ giải mã.

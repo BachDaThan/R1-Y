@@ -28,6 +28,30 @@ public final class AudioDiag {
 
     public static volatile JSONObject last = null;
 
+    /**
+     * STREAM dùng để phát ra loa ngoài của R1.
+     *
+     * Loa Phicomm R1 có cấu hình route âm thanh bất thường: STREAM_MUSIC KHÔNG
+     * ra loa ngoài (đã kiểm chứng trên phần cứng thật). Phải dùng STREAM_SYSTEM.
+     * Người dùng đổi được trên web (tab Nhạc) nếu ROM của họ khác.
+     */
+    public static int streamType(android.content.Context ctx) {
+        String route = "system";
+        try {
+            route = new com.bachdathan.r1y.config.R1YConfig(ctx).getAudioRoute();
+        } catch (Throwable ignored) {}
+        if ("music".equals(route)) return AudioManager.STREAM_MUSIC;
+        if ("ring".equals(route)) return AudioManager.STREAM_RING;
+        return AudioManager.STREAM_SYSTEM;
+    }
+
+    public static String streamName(android.content.Context ctx) {
+        int t = streamType(ctx);
+        if (t == AudioManager.STREAM_MUSIC) return "music (STREAM_MUSIC)";
+        if (t == AudioManager.STREAM_RING) return "ring (STREAM_RING)";
+        return "system (STREAM_SYSTEM)";
+    }
+
     private AudioDiag() {}
 
     /** Đọc nhanh trạng thái âm thanh hiện tại (không phát gì). */
@@ -46,6 +70,12 @@ public final class AudioDiag {
             o.put("wiredHeadset", am.isWiredHeadsetOn());
             o.put("bluetoothA2dp", am.isBluetoothA2dpOn());
             o.put("streamVolumeOk", vol > 0);
+            int st = streamType(ctx);
+            o.put("route", streamName(ctx));
+            o.put("routeVolume", am.getStreamVolume(st));
+            o.put("routeVolumeMax", am.getStreamMaxVolume(st));
+            o.put("streamMusicVolume", am.getStreamVolume(AudioManager.STREAM_MUSIC));
+            o.put("streamSystemVolume", am.getStreamVolume(AudioManager.STREAM_SYSTEM));
             if (vol == 0) {
                 o.put("advice", "Âm lượng nhạc đang bằng 0 — đây là lý do không có tiếng. "
                     + "Bấm nút 'Bật âm lượng' hoặc dùng remote loa để tăng.");
@@ -97,16 +127,22 @@ public final class AudioDiag {
         return o;
     }
 
-    /** Bật âm lượng nhạc lên mức nghe được (mặc định 80% max). */
+    /**
+     * Nâng âm lượng của ĐÚNG stream đang dùng (mặc định STREAM_SYSTEM trên R1),
+     * và cả STREAM_MUSIC cho chắc — trên R1 hai mức này tách rời nhau.
+     */
     public static boolean ensureVolume(Context ctx) {
         try {
             AudioManager am = (AudioManager) ctx.getSystemService(Context.AUDIO_SERVICE);
-            int max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
-            int target = Math.max(7, (int) (max * 0.8));
-            if (am.getStreamVolume(AudioManager.STREAM_MUSIC) < target) {
-                am.setStreamVolume(AudioManager.STREAM_MUSIC, target, 0);
+            int st = streamType(ctx);
+            for (int s : new int[]{st, AudioManager.STREAM_MUSIC}) {
+                int max = am.getStreamMaxVolume(s);
+                int target = Math.max(7, (int) (max * 0.8));
+                if (am.getStreamVolume(s) < target) {
+                    am.setStreamVolume(s, target, 0);
+                }
             }
-            return am.getStreamVolume(AudioManager.STREAM_MUSIC) > 0;
+            return am.getStreamVolume(st) > 0;
         } catch (Throwable t) {
             Log.w(TAG, "Không đặt được âm lượng: " + t);
             return false;
@@ -129,7 +165,7 @@ public final class AudioDiag {
         }
         AudioTrack track = null;
         try {
-            track = new AudioTrack(AudioManager.STREAM_MUSIC, sr,
+            track = new AudioTrack(streamType(ctx), sr,
                 android.media.AudioFormat.CHANNEL_OUT_MONO,
                 android.media.AudioFormat.ENCODING_PCM_16BIT,
                 n * 2, AudioTrack.MODE_STATIC);
@@ -159,7 +195,7 @@ public final class AudioDiag {
             ensureVolume(ctx);
             o.put("url", url);
             mp = new MediaPlayer();
-            mp.setAudioStreamType(AudioManager.STREAM_MUSIC);
+            mp.setAudioStreamType(streamType(ctx));
             final Throwable[] err = new Throwable[1];
             mp.setOnErrorListener(new MediaPlayer.OnErrorListener() {
                 @Override

@@ -108,6 +108,12 @@ python3 tools/r1y.py install --ip 192.168.43.1
 
 Giữ lại cài đặt khi gỡ (nếu ROM cho phép): `pm uninstall -k com.bachdathan.r1y`.
 
+## Loa R1 không phát STREAM_MUSIC
+
+Loa Phicomm R1 **không đưa `STREAM_MUSIC` ra loa ngoài** — đây là lý do phổ biến nhất
+khiến web báo “đang phát” mà loa im. Từ v1.7.6 app mặc định phát bằng **STREAM_SYSTEM**;
+đổi được ở tab **Nhạc** (ô “Đường ra”) nếu ROM khác. Chi tiết: `docs/LOA_KHONG_RA_TIENG.md`.
+
 ## Nghe nhạc: điều khiển + codec
 
 Tab **Nhạc** (web 8088) có **Tạm dừng / Phát tiếp / Ngưng hẳn / Lặp lại** và dòng

@@ -499,6 +499,7 @@ public class WebServer extends NanoHTTPD {
             o.put("hotspot_password", config.getHotspotPassword());
             o.put("hotspot_auto_start", config.isHotspotAutoStart());
             o.put("audio_quality", config.getAudioQuality());
+            o.put("audio_route", config.getAudioRoute());
             o.put("setup_mode", config.isSetupMode());
             o.put("home_wifi_ssid", config.getHomeWifiSsid());
         } catch (Exception ignored) {}
@@ -536,6 +537,7 @@ public class WebServer extends NanoHTTPD {
             if (o.has("hotspot_auto_start")) config.setHotspotAutoStart(o.optBoolean("hotspot_auto_start", true));
             if (o.has("hotspot_enabled")) config.setHotspotEnabled(o.optBoolean("hotspot_enabled", false));
             if (o.has("audio_quality")) config.setAudioQuality(o.optString("audio_quality", "high"));
+            if (o.has("audio_route")) config.setAudioRoute(o.optString("audio_route", "system"));
             return json(200, "{\"ok\":true}");
         } catch (Exception e) {
             return json(400, "{\"ok\":false,\"error\":\"" + e.getMessage() + "\"}");
@@ -684,7 +686,14 @@ public class WebServer extends NanoHTTPD {
             String action = param(session, "action");
             String svc = com.bachdathan.r1y.service.AudioPlaybackService.class.getName();
             if ("POST".equals(method) && action != null && !action.isEmpty()) {
-                if ("repeat".equals(action)) {
+                if ("route".equals(action)) {
+                    String v = param(session, "value");
+                    new R1YConfig(context).setAudioRoute(v);
+                    o.put("ok", true);
+                    o.put("route", new R1YConfig(context).getAudioRoute());
+                    o.put("message", "Đã đổi đường ra âm thanh: " + v
+                        + ". Ngưng phát rồi bấm Phát lại để áp dụng.");
+                } else if ("repeat".equals(action)) {
                     String on = param(session, "on");
                     boolean want = "1".equals(on) || "true".equalsIgnoreCase(on);
                     com.bachdathan.r1y.service.AudioPlaybackService.repeatOne = want;
@@ -859,7 +868,7 @@ public class WebServer extends NanoHTTPD {
         + ".wifi.sel{border-color:#5b5bd6;background:#1b1e2b}.wifi .nm{flex:1}.wifi .lk{font-size:12px;color:#9aa3b2}"
         + "</style></head><body>"
         + "<div class=\"top\"><div class=\"logo\">&#9635;</div>"
-        + "<div><div class=\"name\">R1-Y</div><div class=\"sub\" id=\"sub\">... &middot; v1.7.5</div></div>"
+        + "<div><div class=\"name\">R1-Y</div><div class=\"sub\" id=\"sub\">... &middot; v1.7.6</div></div>"
         + "<div class=\"ready\">&#9679; S&#7841;n s&#224;ng</div></div>"
         + "<div class=\"card\" id=\"card-setup\">"
         + "<h3>&#128225; C&#224;i &#273;&#7863;t WiFi cho loa</h3>"
@@ -886,6 +895,10 @@ public class WebServer extends NanoHTTPD {
         + "<div class=\"row\"><button class=\"btn danger\" onclick=\"pl('stop')\">&#10074;&#10074;&#10074; Ng&#432;ng h&#7859;n</button>"
         + "<button class=\"btn danger\" id=\"repBtn\" onclick=\"plRepeat()\">&#128257; L&#7863;p l&#7841;i: T&#7854;T</button></div>"
         + "<div class=\"msg\" id=\"nowBox\"></div>"
+        + "<select id=\"routeSel\" onchange=\"plRoute()\" style=\"width:100%;padding:12px;border-radius:10px;border:1px solid #2a2f3a;background:#0b0d11;color:#e8eaf0\">"
+        + "<option value=\"system\">&#272;&#432;&#7901;ng ra: H&#7879; th&#7889;ng (STREAM_SYSTEM) &#8212; m&#7863;c &#273;&#7883;nh cho loa R1</option>"
+        + "<option value=\"music\">&#272;&#432;&#7901;ng ra: Nh&#7841;c (STREAM_MUSIC)</option>"
+        + "<option value=\"ring\">&#272;&#432;&#7901;ng ra: Chu&#244;ng (STREAM_RING)</option></select>"
         + "<h3 style=\"margin-top:18px\">&#128264; Ki&#7875;m tra loa c&#243; ra ti&#7871;ng kh&#244;ng</h3>"
         + "<div class=\"msg\" id=\"sndMsg\">B&#7845;m n&#250;t b&#234;n d&#432;&#7899;i &#273;&#7875; loa ph&#225;t 1 ti&#7871;ng b&#237;p (kh&#244;ng c&#7847;n m&#7841;ng).</div>"
         + "<div class=\"row\"><button class=\"btn primary\" onclick=\"sndBeep()\">&#128266; Ph&#225;t th&#7917; ti&#7871;ng b&#237;p</button>"
@@ -1003,6 +1016,12 @@ public class WebServer extends NanoHTTPD {
         + "async function plRepeat(){try{var cur=document.getElementById('repBtn').textContent;"
         + "var on=cur.indexOf('T\u1eaeT')>=0?'1':'0';"
         + "await fetch('/api/player?action=repeat&on='+on,{method:'POST'});plState();}catch(e){}}"
+        + "async function plRoute(){var v=document.getElementById('routeSel').value;"
+        + "var m=document.getElementById('playMsg');"
+        + "try{var r=await fetch('/api/player?action=route&value='+v,{method:'POST'});var j=await r.json();"
+        + "m.textContent=j.message||'';}catch(e){m.textContent='L\u1ed7i: '+e.message;}}"
+        + "async function plRouteLoad(){try{var r=await fetch('/api/settings');var j=await r.json();"
+        + "var a=document.getElementById('routeSel');if(a&&j.audio_route){a.value=j.audio_route;}}catch(e){}}"
         + "async function plState(){try{var r=await fetch('/api/player');var j=await r.json();"
         + "var b=document.getElementById('repBtn');if(b){b.textContent='\ud83d\udd01 L\u1eb7p l\u1ea1i: '+(j.repeat?'B\u1eacT':'T\u1eaeT');}"
         + "var n=document.getElementById('nowBox');if(n){"
@@ -1016,6 +1035,7 @@ public class WebServer extends NanoHTTPD {
         + "if(j.wiredHeadset){t+=' | \u0111ang nh\u1eadn tai nghe';}"
         + "if(j.bluetoothA2dp){t+=' | \u0111ang ph\u00e1t qua Bluetooth';}"
         + "var e=document.getElementById('sndInfo');if(e)e.textContent=t;"
+        + "if(document.getElementById('sndInfo')&&j.route){var si=document.getElementById('sndInfo');si.textContent='\u0110\u01b0\u1eddng ra: '+j.route+' \u2014 \u00e2m l\u01b0\u1ee3ng '+(j.routeVolume!=null?j.routeVolume+'/'+j.routeVolumeMax:'?');}"
         + "var c=document.getElementById('codecInfo');if(c){c.textContent=j.opusSupported?'Codec: c\u00f3 Opus (d\u00f9ng \u0111\u01b0\u1ee3c c\u1ea3 Opus l\u1eabn AAC)':'Codec: KH\u00d4NG c\u00f3 Opus/WebM \u2014 app t\u1ef1 \u01b0u ti\u00ean AAC/m4a';}}catch(e){}}"
         + "async function sndBeep(){var m=document.getElementById('sndMsg');m.textContent='\u0110ang ph\u00e1t b\u00edp...';"
         + "try{var r=await fetch('/api/audio/test?kind=beep',{method:'POST'});var j=await r.json();"
@@ -1053,6 +1073,6 @@ public class WebServer extends NanoHTTPD {
         + "try{var r=await fetch('/api/reboot',{method:'POST',body:JSON.stringify({mode:mode,confirm:true})});var j=await r.json();"
         + "document.getElementById('btMsg').textContent=j.message||j.error||'OK';"
         + "}catch(e){document.getElementById('btMsg').textContent='Loa \\u0111ang kh\\u1edfi \\u0111\\u1ed9ng l\\u1ea1i — ch\\u1edd r\\u1ed3i t\\u1ea3i l\\u1ea1i trang.';}}"
-        + "loadRes();loadStatus();showMode();loadAi();loadAct();loadHotspot();loadAudioQ();loadSetup();sndStatus();plState();"
+        + "loadRes();loadStatus();showMode();loadAi();loadAct();loadHotspot();loadAudioQ();loadSetup();sndStatus();plState();plRouteLoad();"
         + "</script></body></html>";
 }

@@ -255,6 +255,25 @@ public class R1YConfig {
             "compat".equals(q) ? "compat" : "high").apply();
     }
 
+    /**
+     * Đường ra âm thanh cho nhạc:
+     *   "system" (MẶC ĐỊNH) — dùng STREAM_SYSTEM
+     *   "music"            — dùng STREAM_MUSIC
+     *   "ring"             — dùng STREAM_RING
+     *
+     * Vì sao mặc định là "system": loa Phicomm R1 có cấu hình route âm thanh
+     * bất thường — STREAM_MUSIC không ra loa ngoài (đã kiểm chứng trên phần cứng
+     * thật bởi các dự án firmware R1 khác). Đổi được trên web nếu ROM của bạn khác.
+     */
+    public String getAudioRoute() {
+        return prefs.getString("audio_route", "system");
+    }
+
+    public void setAudioRoute(String r) {
+        String v = "music".equals(r) || "ring".equals(r) ? r : "system";
+        prefs.edit().putString("audio_route", v).apply();
+    }
+
     // ================================================== chế độ cài đặt (WiFi setup)
 
     /**
