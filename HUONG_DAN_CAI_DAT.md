@@ -24,16 +24,20 @@ Xem [tools/README.md](tools/README.md).
 - (Tùy chọn) Máy chủ nhạc: PC Debian/Ubuntu chạy `server/r1y_server.py`.
   Không có máy chủ vẫn dùng được (loa tự tìm máy chủ công khai).
 
-## 2. Bật ADB qua WiFi trên loa
+## 2. Kết nối ADB với loa (firmware gốc)
 
-1. Trên loa, mở **Cài đặt → Tùy chọn nhà phát triển → Gỡ lỗi USB** (bật).
-2. Ghi lại **IP của loa** (ví dụ `192.168.2.20`) trong Cài đặt → WiFi.
-3. Trên máy tính, kết nối:
+Loa R1 không có màn hình/Cài đặt. Firmware gốc chỉ mở ADB khi loa **đang phát WiFi riêng**:
+
+1. Tải sẵn APK khi máy còn internet (tool `r1y` tự làm; WiFi của loa không có internet).
+2. Cắm điện loa, chờ ~1 phút, giữ **nút trên đỉnh loa** ~5 giây → loa phát WiFi `Phicomm R1`.
+3. Nối điện thoại/PC vào WiFi đó rồi kết nối:
    ```sh
-   adb connect 192.168.2.20:5555
+   adb connect 192.168.43.1:5555
    adb devices   # phải thấy "device"
    ```
-   Nếu chưa thấy, cắm USB một lần rồi chạy lại `adb connect`.
+4. Cài firmware (mục 4), **rồi mới** cho loa vào WiFi nhà (`python3 tools/r1y.py wifi`).
+
+Loa chỉ nhận một kết nối ADB cùng lúc. Nếu `offline`: rút điện 10 giây, cắm lại, chờ 1 phút, làm lại từ bước 2.
 
 ## 3. Tải APK
 

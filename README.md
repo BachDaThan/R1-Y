@@ -15,7 +15,7 @@ thật, không còn hàng chục file ghi chú thừa.
   [LiteTube](https://github.com/BachDaThan/LiteTube) (Piped API, luồng audio
   xếp bitrate cao nhất).
 - 📶 **Cài qua cùng WiFi** bằng ADB (`scripts/install.sh`), không cần USB.
-- 📡 **Chế độ cài đặt WiFi** (giữ nút tròn trên loa): loa phát WiFi `R1-Y` →
+- 📡 **Chế độ cài đặt WiFi** (giữ nút trên đỉnh loa ~5 giây): loa phát WiFi `R1-Y` →
   điện thoại nối vào → **quét + chọn WiFi nhà + nhập mật khẩu** → loa vào WiFi nhà
   → giờ mới cài firmware qua mạng nội bộ.
 - 📱 **Tool trên điện thoại (Termux)**: `bash tools/r1y_termux.sh` — tự cài thư viện
@@ -139,21 +139,32 @@ ADB qua WiFi nhà — sẽ luôn `offline`.
 > **trước**, rồi mới nối vào WiFi của loa. APK đã tải được lưu ở `~/.r1y/firmware/`
 > để lần sau cài lại **không cần internet**.
 
-**Đúng thứ tự:**
+**Đúng thứ tự (cài TRƯỚC, nối WiFi nhà SAU):**
 
 | Bước | Làm gì |
 |---|---|
-| 1 | Giữ **nút tròn** trên loa ~6 giây → loa phát WiFi riêng (tên kiểu `Phicomm_R1_XXXX`) |
-| 2 | Điện thoại/PC nối vào WiFi đó |
-| 3 | `r1y` → chọn **6** → nhập tên + mật khẩu WiFi nhà → loa tự vào WiFi nhà |
-| 4 | Chờ ~20 giây, `r1y` → chọn **5** (tool tự dò IP mới của loa) |
-| 5 | `r1y` → chọn **1** → cài firmware R1-Y |
+| 1 | Chạy `r1y` khi máy còn internet → chọn **1**: tool tải firmware về máy trước |
+| 2 | Cắm điện loa, chờ ~1 phút, giữ **nút trên đỉnh loa** ~5 giây → loa phát WiFi `Phicomm R1` |
+| 3 | Điện thoại/PC nối vào WiFi `Phicomm R1` rồi bấm Enter: tool tự nối ADB `192.168.43.1:5555` và cài firmware |
+| 4 | Tool hỏi "Cho loa vào WiFi nhà?" → chọn WiFi nhà, nhập mật khẩu |
+| 5 | Nối lại điện thoại/PC vào WiFi nhà → tool tự dò IP loa → mở `http://IP_LOA:8088` |
 
-> Tool cũng tự thử `192.168.43.1:5555` (IP loa ở chế độ phát WiFi) trước khi
-> báo lỗi, đúng như cách các tool cộng đồng vẫn làm với loa R1.
+> Cách này giống DB-Robot, Bánh Mì và script Vietbot: cài qua `192.168.43.1` khi loa
+> đang phát WiFi, rồi mới chuyển loa sang WiFi nhà. Nếu nối WiFi nhà **trước** khi cài,
+> ADB trên firmware gốc không còn mở (`offline`) và không cài được.
 >
-> Cấu hình WiFi dùng API gốc `http://192.168.43.1:8989/api/configwifi` —
-> hoạt động **cả khi chưa cài R1-Y**.
+> Loa chỉ nhận **một** kết nối ADB cùng lúc: tắt tool/adb khác đang nối loa.
+> Cấu hình WiFi dùng API của R1-Y (`:8088`, có quét WiFi), lỗi thì tự thử API gốc
+> `http://192.168.43.1:8989/api/configwifi`.
+
+**Gặp lỗi:**
+
+| Hiện tượng | Cách xử lý |
+|---|---|
+| Giữ nút mà không thấy WiFi `Phicomm R1` | Chờ loa khởi động xong (~1 phút), giữ lại, đứng gần loa, làm mới danh sách WiFi |
+| `offline` / "Không kết nối được" | Rút điện loa 10 giây, cắm lại, chờ 1 phút, giữ nút 5 giây, chạy lại tool |
+| `unauthorized` | Tool chờ ~20 giây; chạy lại, hoặc rút điện cắm lại rồi nối lại |
+| Đã vào WiFi nhà mà chưa cài | Giữ nút 5 giây cho loa phát WiFi lại, rồi cài qua `192.168.43.1` |
 
 ## Điều khiển loa qua web
 
@@ -192,7 +203,7 @@ tự hạ xuống chỉ khởi động lại app).
 
 ### Chế độ cài đặt WiFi (giữ nút tròn)
 
-1. **Giữ nút tròn trên loa** (hoặc bật ở tab **Nhà**, hoặc `tools/r1y.py hotspot`).
+1. **Giữ nút trên đỉnh loa ~5 giây** (hoặc bật ở tab **Nhà**, hoặc `tools/r1y.py hotspot`).
 2. Loa phát WiFi tên **R1-Y** (mật khẩu mặc định `r1y12345678`).
 3. Điện thoại nối WiFi `R1-Y` → mở `http://192.168.43.1:8088`.
 4. Mục **Cài đặt WiFi** → **Quét WiFi** → chọn WiFi nhà → nhập mật khẩu → **Kết nối**.
