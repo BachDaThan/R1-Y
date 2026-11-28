@@ -1304,7 +1304,7 @@ public class WebServer extends NanoHTTPD {
         + "if(document.getElementById('sndInfo')&&j.route){var si=document.getElementById('sndInfo');si.textContent='\u0110\u01b0\u1eddng ra: '+j.route+' \u2014 \u00e2m l\u01b0\u1ee3ng '+(j.routeVolume!=null?j.routeVolume+'/'+j.routeVolumeMax:'?');}"
         + "var c=document.getElementById('codecInfo');if(c){"
         + "if(j.avoidOpus){c.textContent='Codec: m\u00e1y KH\u00d4NG gi\u1ea3i m\u00e3 Opus/WebM \u2014 app b\u1eaft bu\u1ed9c ch\u1ecdn AAC/m4a ('+(j.aacSupported?'c\u00f3':'KH\u00d4NG c\u00f3')+' AAC)';}"
-        + "else{c.textContent='Codec: c\u00f3 Opus (d\u00f9ng \u0111\u01b0\u1ee3c c\u1ea3 Opus l\u1eabn AAC)';}}"
+        + "else{c.textContent='Codec: c\u00f3 Opus (d\u00f9ng \u0111\u01b0\u1ee3c c\u1ea3 Opus l\u1eabn AAC)';}"
         + "}}catch(e){}}"
         + "async function sndBeep(){var m=document.getElementById('sndMsg');m.textContent='\u0110ang ph\u00e1t b\u00edp...';"
         + "try{var r=await fetch('/api/audio/test?kind=beep',{method:'POST'});var j=await r.json();"
