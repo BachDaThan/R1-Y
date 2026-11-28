@@ -816,7 +816,17 @@ public class WebServer extends NanoHTTPD {
             com.bachdathan.r1y.service.VoiceRecognitionService voice =
                 com.bachdathan.r1y.core.XiaozhiCore.getInstance().getVoiceService();
 
-            if ("talk".equals(action)) {
+            if ("reconnect".equals(action)) {
+                if (conn != null) {
+                    conn.disconnect();
+                    conn.connect();
+                    out.put("ok", true);
+                    out.put("message", "Đang kết nối lại máy chủ AI (hỏi OTA lấy token mới)…");
+                } else {
+                    out.put("ok", false);
+                    out.put("error", "Chưa có dịch vụ kết nối AI");
+                }
+            } else if ("talk".equals(action)) {
                 com.bachdathan.r1y.util.VoiceTrigger.toggleTalking(context);
                 out.put("ok", true);
                 out.put("talking", com.bachdathan.r1y.util.VoiceTrigger.talking);
@@ -1084,7 +1094,7 @@ public class WebServer extends NanoHTTPD {
         + ".wifi.sel{border-color:#5b5bd6;background:#1b1e2b}.wifi .nm{flex:1}.wifi .lk{font-size:12px;color:#9aa3b2}"
         + "</style></head><body>"
         + "<div class=\"top\"><div class=\"logo\">&#9635;</div>"
-        + "<div><div class=\"name\">R1-Y</div><div class=\"sub\" id=\"sub\">... &middot; v1.9.1</div></div>"
+        + "<div><div class=\"name\">R1-Y</div><div class=\"sub\" id=\"sub\">... &middot; v1.9.2</div></div>"
         + "<div class=\"ready\">&#9679; S&#7841;n s&#224;ng</div></div>"
         + "<div class=\"card\" id=\"card-setup\">"
         + "<h3>&#128225; C&#224;i &#273;&#7863;t WiFi cho loa</h3>"
@@ -1152,7 +1162,8 @@ public class WebServer extends NanoHTTPD {
         + "<div class=\"msg\">N&#243;i to g&#7847;n loa r&#7891;i b&#7845;m <b>Ki&#7875;m tra mic</b>: s&#7889; ph&#7843;i nh&#7843;y l&#234;n. N&#7871;u lu&#244;n ~0 th&#236; mic b&#7883; ch&#7863;n quy&#7873;n ho&#7863;c h&#7887;ng.</div>"
         + "<div class=\"msg\">K&#7871;t n&#7889;i l&#7841;i tr&#7907; l&#253;: <code>adb shell am force-stop com.bachdathan.r1y</code> r&#7891;i m&#7903; l&#7841;i app.</div>"
         + "<h3 style=\"margin-top:18px\">&#128172; N&#243;i chuy&#7879;n v&#7899;i tr&#7907; l&#253;</h3>"
-        + "<div class=\"row\"><button class=\"btn primary\" onclick=\"voiceTalk()\">&#127908; N&#243;i (b&#7845;m &#273;&#7875; n&#243;i, b&#7845;m n&#7919;a &#273;&#7875; th&#244;i)</button></div>"
+        + "<div class=\"row\"><button class=\"btn primary\" onclick=\"voiceTalk()\">&#127908; N&#243;i (b&#7845;m &#273;&#7875; n&#243;i, b&#7845;m n&#7919;a &#273;&#7875; th&#244;i)</button>"
+        + "<button class=\"btn\" onclick=\"voiceReconnect()\">&#128260; K&#7871;t n&#7889;i l&#7841;i AI</button></div>"
         + "<input id=\"voiceText\" placeholder=\"Ho&#7863;c g&#245; c&#226;u h&#7887;i r&#7891;i Enter\" style=\"width:100%;margin-top:8px;padding:12px;border-radius:10px;border:1px solid #2a2f3a;background:#0b0d11;color:#e8eaf0;box-sizing:border-box\" onkeydown=\"if(event.key==='Enter'){voiceText()}\">"
         + "<div class=\"row\"><button class=\"btn\" onclick=\"voiceText()\">G&#7917;i c&#226;u</button>"
         + "<button class=\"btn danger\" onclick=\"voiceAbort()\">Ng&#7915;ng tr&#7907; l&#253; n&#243;i</button></div>"
@@ -1242,6 +1253,9 @@ public class WebServer extends NanoHTTPD {
         + "var t='M\u1ee9c \u00e2m thanh mic: '+(j.micEnergy!=null?j.micEnergy:'?');"
         + "if(j.micAdvice){t+=' \u2014 '+j.micAdvice;}m.textContent=t;}catch(e){m.textContent='L\u1ed7i: '+e.message;}}"
         + "async function voiceTalk(){try{await fetch('/api/voice?action=talk',{method:'POST'});}catch(e){}setTimeout(voiceStatus,300);}"
+        + "async function voiceReconnect(){var b=document.getElementById('voiceInfo');if(b){b.textContent='\u0110ang k\u1ebft n\u1ed1i l\u1ea1i...';}"
+        + "try{var r=await fetch('/api/voice?action=reconnect',{method:'POST'});var j=await r.json();"
+        + "if(!j.ok&&b){b.textContent=j.error||'L\u1ed7i';}}catch(e){}setTimeout(voiceStatus,4000);}"
         + "async function voiceAbort(){try{await fetch('/api/voice?action=abort',{method:'POST'});}catch(e){}setTimeout(voiceStatus,300);}"
         + "async function voiceText(){var t=document.getElementById('voiceText').value;if(!t){return;}"
         + "try{var r=await fetch('/api/voice?action=text&text='+encodeURIComponent(t),{method:'POST'});var j=await r.json();"

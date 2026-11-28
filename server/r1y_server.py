@@ -33,7 +33,7 @@ import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-VERSION = "1.9.1"
+VERSION = "1.9.2"
 BASE = os.path.dirname(os.path.abspath(__file__))
 
 

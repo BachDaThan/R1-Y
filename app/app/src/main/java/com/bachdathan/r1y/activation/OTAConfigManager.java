@@ -111,6 +111,41 @@ public class OTAConfigManager {
     public static int getLastHttpCode() { return lastHttpCode; }
     public static String getLastResponse() { return lastResponse; }
 
+    /**
+     * Che bớt token/mật khẩu trong câu trả lời của máy chủ trước khi hiện lên web.
+     * Trang 8088 không có mật khẩu; ai vào được WiFi nhà cũng mở được trang này,
+     * nên không để lộ nguyên token.
+     */
+    static String maskSecrets(String body) {
+        if (body == null) return "";
+        String out = body;
+        out = maskField(out, "token", 6);
+        out = maskField(out, "password", 4);
+        out = maskField(out, "challenge", 4);
+        return out;
+    }
+
+    /** Giữ vài ký tự đầu của một trường JSON, phần còn lại thay bằng ***. */
+    private static String maskField(String body, String name, int keep) {
+        try {
+            java.util.regex.Pattern p = java.util.regex.Pattern.compile(
+                "\"" + name + "\"\\s*:\\s*\"([^\"]*)\"");
+            java.util.regex.Matcher m = p.matcher(body);
+            StringBuffer sb = new StringBuffer();
+            while (m.find()) {
+                String v = m.group(1);
+                String shown = v.length() <= keep ? v : v.substring(0, keep) + "***";
+                m.appendReplacement(sb,
+                    java.util.regex.Matcher.quoteReplacement(
+                        "\"" + name + "\":\"" + shown + "\""));
+            }
+            m.appendTail(sb);
+            return sb.toString();
+        } catch (Throwable t) {
+            return body;
+        }
+    }
+
     private OTAResponse performOTARequest() throws Exception {
         
         // Get device identity
@@ -180,7 +215,7 @@ public class OTAConfigManager {
             String body = responseBody.toString();
             Log.d(TAG, "OTA Response (" + statusCode + "): " + body);
             lastHttpCode = statusCode;
-            lastResponse = body.length() > 600 ? body.substring(0, 600) : body;
+            lastResponse = maskSecrets(body.length() > 600 ? body.substring(0, 600) : body);
             
             // Theo đặc tả OTA của Xiaozhi: 200 = cấu hình bình thường,
             // 202/203 = THIẾT BỊ CẦN KÍCH HOẠT (body vẫn là JSON hợp lệ có
