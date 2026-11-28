@@ -130,9 +130,32 @@ public class DeviceActivator {
                 }
             });
             
+        } else if (response.websocket != null
+                && response.websocket.token != null
+                && !response.websocket.token.trim().isEmpty()) {
+            // OTA trả 200 kèm {websocket:{url, token}} — nghĩa là thiết bị ĐÃ được
+            // kích hoạt (ví dụ đã nhập mã trên xiaozhi.me cho đúng MAC này), và
+            // máy chủ vừa cấp token. Trước v1.9.2 nhánh này không tồn tại: app chỉ
+            // lưu trạng thái "đã kích hoạt" mà KHÔNG lưu token, rồi đi tiếp với
+            // token sinh từ MAC -> máy chủ từ chối. Đó chính là ca trong ảnh:
+            // "Máy chủ trả HTTP 200 ... token: test-token" mà app vẫn báo
+            // "Kết nối: không".
+            String token = response.websocket.token.trim();
+            Log.i(TAG, "OTA đã cấp token — lưu lại và dùng luôn");
+            fingerprint.setAccessToken(token);
+            fingerprint.setActivationStatus(true);
+            if (response.websocket.url != null && !response.websocket.url.isEmpty()) {
+                com.bachdathan.r1y.config.R1YConfig cfg =
+                    new com.bachdathan.r1y.config.R1YConfig(context);
+                cfg.setAiUrl(response.websocket.url);
+                if (!"custom".equals(cfg.getAiServer())) cfg.setAiServer("custom");
+                Log.i(TAG, "Máy chủ WebSocket từ OTA: " + response.websocket.url);
+            }
+            notifySuccess(token);
+            isActivating.set(false);
         } else {
             // No activation data - device already activated on server
-            Log.i(TAG, "Device already activated on server");
+            Log.i(TAG, "Máy chủ không yêu cầu kích hoạt và không cấp token mới");
             fingerprint.setActivationStatus(true);
             notifySuccess(fingerprint.getAccessToken());
             isActivating.set(false);

@@ -291,6 +291,62 @@ public class XiaozhiConnectionService extends Service {
             return;
         }
 
+        // Bước 1: hỏi OTA. OTA là NGUỒN CHUẨN: nó trả về đúng WebSocket URL + token
+        // mà máy chủ đã cấp cho MAC này. Trước v1.9.2 app bỏ qua bước này và dùng
+        // "token" sinh từ MAC -> máy chủ từ chối, đúng hiện tượng "Kết nối: không"
+        // dù OTA đã trả HTTP 200 kèm token.
+        Log.i(TAG, "Hỏi OTA trước khi bắt tay WebSocket…");
+        final String fallback2 = r1y.getAiToken();
+        new com.bachdathan.r1y.activation.OTAConfigManager(this)
+            .fetchOTAConfig(new com.bachdathan.r1y.activation.OTAConfigManager.OTACallback() {
+                @Override
+                public void onSuccess(com.bachdathan.r1y.activation.OTAConfigManager.OTAResponse resp) {
+                    String token = null;
+                    if (resp != null && resp.websocket != null) {
+                        token = resp.websocket.token;
+                        if (resp.websocket.url != null && !resp.websocket.url.isEmpty()) {
+                            R1YConfig cfg = new R1YConfig(XiaozhiConnectionService.this);
+                            if (!resp.websocket.url.equals(cfg.getAiUrl())) {
+                                Log.i(TAG, "OTA đổi máy chủ WebSocket: " + resp.websocket.url);
+                                cfg.setAiUrl(resp.websocket.url);
+                                if (!"custom".equals(cfg.getAiServer())) cfg.setAiServer("custom");
+                            }
+                        }
+                    }
+                    if (token == null || token.trim().isEmpty()) {
+                        token = fallback2;
+                    }
+                    if (token == null || token.trim().isEmpty()) {
+                        token = deviceFingerprint.getAccessToken();
+                    }
+                    if (token != null && !token.trim().isEmpty()) {
+                        deviceFingerprint.setAccessToken(token.trim());
+                        deviceFingerprint.setActivationStatus(true);
+                        connectWithToken(token.trim());
+                        return;
+                    }
+                    // OTA không cấp token -> cần người dùng kích hoạt
+                    Log.i(TAG, "OTA không cấp token — bắt đầu kích hoạt");
+                    deviceActivator.startActivation();
+                }
+
+                @Override
+                public void onError(String error) {
+                    Log.w(TAG, "OTA lỗi (" + error + ") — dùng token đã lưu nếu có");
+                    String token = fallback2 != null && !fallback2.trim().isEmpty()
+                        ? fallback2.trim() : deviceFingerprint.getAccessToken();
+                    if (token != null && !token.trim().isEmpty()) {
+                        connectWithToken(token);
+                    } else if (connectionListener != null) {
+                        connectionListener.onError("Không lấy được cấu hình máy chủ AI: " + error);
+                    }
+                }
+            });
+        return;
+    }
+
+    /** Đường cũ (giữ lại cho nơi khác gọi): kiểm tra kích hoạt rồi nối. */
+    private void connectLegacy() {
         // Check activation status
         if (!deviceActivator.isActivated()) {
             Log.i(TAG, "Device not activated - starting activation flow");
@@ -654,7 +710,9 @@ public class XiaozhiConnectionService extends Service {
         if (d.length > 3 && d[0] == 'I' && d[1] == 'D' && d[2] == '3') return "mp3";
         if (d.length > 2 && (d[0] & 0xFF) == 0xFF && (d[1] & 0xE0) == 0xE0) return "mp3/aac";
         if (d.length > 12 && d[0] == 'R' && d[1] == 'I' && d[2] == 'F' && d[3] == 'F') return "wav";
-        if (d.length > 8 && d[4] == 'f' && d[5] == 't' && d[6] == 'y') return "mp4/m4a";
+        if (d.length > 8 && d[4] == 'f' && d[5] == 't' && d[6] == 'y' && d[7] == 'p') {
+            return "mp4/m4a";
+        }
         return null;
     }
 

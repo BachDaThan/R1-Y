@@ -82,3 +82,20 @@ Sau khi cài, dòng chẩn đoán phải đổi thành `magic: mp4/m4a` với li
 Nếu **vẫn** ra `webm/matroska`, nghĩa là máy chủ YouTube đó chỉ trả WebM cho R1 —
 khi đó bấm **Tải lại** ở “Bộ lấy tiếng YouTube” để đổi máy chủ, hoặc Lưu một máy
 chủ Invidious khác.
+
+## “magic: khác (00 00)” là gì? (sửa ở v1.9.2)
+
+Đó là **file MP4/M4A**. Định dạng MP4 bắt đầu bằng 4 byte **độ dài hộp**, nên chữ
+`ftyp` nằm ở byte 4..7 chứ không phải byte 0. Hàm nhận dạng cũ đọc offset 0 nên
+mọi file AAC/M4A đều bị báo `khác (00 00)` — đúng như ảnh chụp.
+
+Từ v1.9.2, kết quả sẽ là:
+
+```
+Link: HTTP 206 | audio/mp4 | mp4/m4a
+-> OK — định dạng MP4/M4A, R1 giải mã được
+```
+
+Nếu thấy dòng này mà **vẫn im**, thì lỗi nằm ở bước giải mã AAC của ROM — bước tiếp
+theo sẽ là phát bằng `AudioTrack` + `MediaExtractor` (cách các client Xiaozhi khác
+trên R1 vẫn làm) thay vì `MediaPlayer`.

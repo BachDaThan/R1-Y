@@ -116,8 +116,11 @@ public final class UrlProbe {
                 } else if ("mpeg-ts".equals(m)) {
                     verdict = "MPEG-TS — R1 thường KHÔNG phát được";
                     advice = "Chọn chất lượng 'Tương thích'.";
+                } else if (m.startsWith("khác (00 00") || m.startsWith("khác (0 0")) {
+                    verdict = "File âm thanh dạng MP4/AAC (bắt đầu bằng 00 00 00 xx) — "
+                            + "R1 giải mã được";
                 } else {
-                    verdict = "Không nhận ra định dạng (xem 'magic')";
+                    verdict = "Không nhận ra định dạng (magic: " + m + ")";
                     advice = "Gửi dòng này cho mình để xem.";
                 }
             }
@@ -229,7 +232,10 @@ public final class UrlProbe {
     public static String describeMagic(byte[] d, int n) {
         if (d == null || n < 2) return "?";
         int b0 = d[0] & 0xFF, b1 = d[1] & 0xFF;
-        if (n >= 4 && b0 == 'f' && b1 == 't' && (d[2] & 0xFF) == 'y' && (d[3] & 0xFF) == 'p') {
+        // MP4/M4A: 4 byte đầu là ĐỘ DÀI hộp, nên 'ftyp' nằm ở offset 4..7 —
+        // không phải ở offset 0. (Trước v1.9.2 chỗ này đọc sai offset nên mọi
+        // file M4A/AAC đều bị báo "khác (00 00)".)
+        if (n >= 8 && d[4] == 'f' && d[5] == 't' && d[6] == 'y' && d[7] == 'p') {
             return "mp4/m4a";
         }
         if (n >= 4 && b0 == 'O' && b1 == 'g' && d[2] == 'g' && d[3] == 'S') return "ogg";
