@@ -1526,7 +1526,7 @@ def has_internet(timeout=4):
 
 
 TOOL_URL = "https://raw.githubusercontent.com/%s/main/tools/r1y.py" % REPO
-TOOL_VERSION = "1.9.0"
+TOOL_VERSION = "1.9.1"
 
 
 def tool_is_outdated():

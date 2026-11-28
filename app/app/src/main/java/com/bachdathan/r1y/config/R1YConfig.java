@@ -45,8 +45,12 @@ public class R1YConfig {
     private static final String KEY_DISC_AT = "discovered_at";
 
     private final SharedPreferences prefs;
+    private final Context ctx;
 
     public R1YConfig(Context context) {
+        // Giữ application context để dùng lâu dài (dò codec, tải nhạc...)
+        this.ctx = context.getApplicationContext() != null
+                ? context.getApplicationContext() : context;
         this.prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
     }
 
@@ -287,6 +291,24 @@ public class R1YConfig {
      * trả 403, và MediaPlayer báo "đang phát" rồi im. Tải trước còn giúp phát
      * mượt trên R1 (CPU/ WiFi yếu) và lặp lại bài không phải tải lại.
      */
+    /** Context để các lớp khác dùng (dò codec, mã hoá Opus...). */
+    public android.content.Context context() {
+        return this.ctx;
+    }
+
+    /**
+     * Cho phép thử nguồn Opus/WebM dù máy chưa chắc giải mã được.
+     * Mặc định TẮT: Android 5.1 của R1 không có Opus, chọn nhầm thì "báo đang
+     * phát mà im".
+     */
+    public boolean isTryOpus() {
+        return prefs.getBoolean("try_opus", false);
+    }
+
+    public void setTryOpus(boolean on) {
+        prefs.edit().putBoolean("try_opus", on).apply();
+    }
+
     public boolean isCacheAudio() {
         return prefs.getBoolean("cache_audio", true);
     }

@@ -54,3 +54,31 @@ python3 tools/r1y.py silent --ip 192.168.2.20
 ```
 
 In ra kết luận + nội dung link + lời khuyên, giống nút trên web.
+
+## Ca thật đã gặp: “Codec: có Opus” mà link lại là WebM
+
+Ảnh chẩn đoán của người dùng cho thấy cùng lúc hai dòng mâu thuẫn:
+
+```
+Link: HTTP 206 | audio/webm | webm/matroska
+-> WebM/Ogg — R1 (Android 5.1) có thể không giải mã được
+Codec: có Opus (dùng được cả Opus lẫn AAC)
+```
+
+**Nguyên nhân:** hàm dò codec cũ chấp nhận cả `audio/webm` và `audio/vorbis`.
+ROM của R1 có codec Vorbis (dùng cho WebM) nên hàm này kết luận “máy có Opus”,
+vì thế app **không hạ bậc Opus** và chọn luôn luồng WebM → MediaPlayer báo “đang
+phát” rồi im.
+
+**Đã sửa ở v1.9.1:**
+- chỉ đếm đúng `opus` khi dò codec;
+- thêm điều kiện **API < 23 ⇒ luôn tránh Opus** (trừ khi bạn bật “thử Opus”);
+- nếu ROM **không có codec AAC nào** thì không tránh Opus (nếu tránh sẽ không còn
+  nguồn nào để phát) — và web sẽ ghi rõ `KHÔNG có AAC`;
+- dòng `Codec:` trên web giờ nói thẳng: “máy KHÔNG giải mã Opus/WebM — app bắt
+  buộc chọn AAC/m4a”.
+
+Sau khi cài, dòng chẩn đoán phải đổi thành `magic: mp4/m4a` với link AAC.
+Nếu **vẫn** ra `webm/matroska`, nghĩa là máy chủ YouTube đó chỉ trả WebM cho R1 —
+khi đó bấm **Tải lại** ở “Bộ lấy tiếng YouTube” để đổi máy chủ, hoặc Lưu một máy
+chủ Invidious khác.

@@ -980,11 +980,15 @@ public class WebServer extends NanoHTTPD {
             boolean act = com.bachdathan.r1y.activation.ActivationState.activated
                 || com.bachdathan.r1y.activation.DeviceFingerprint.getInstance(context).isActivated();
             if (start && !act) {
+                com.bachdathan.r1y.activation.ActivationState.error = "";
+                com.bachdathan.r1y.activation.ActivationState.fetchStatus =
+                    "Đang hỏi máy chủ Xiaozhi (api.tenclass.net)...";
                 new Thread(new Runnable() {
                     @Override public void run() {
                         try {
                             new com.bachdathan.r1y.activation.DeviceActivator(context).startActivation();
                         } catch (Throwable t) {
+                            com.bachdathan.r1y.activation.ActivationState.fetchStatus = "";
                             com.bachdathan.r1y.activation.ActivationState.error = String.valueOf(t.getMessage());
                         }
                     }
@@ -996,6 +1000,10 @@ public class WebServer extends NanoHTTPD {
             o.put("error", com.bachdathan.r1y.activation.ActivationState.error);
             o.put("attempt", com.bachdathan.r1y.activation.ActivationState.attempt);
             o.put("max", com.bachdathan.r1y.activation.ActivationState.max);
+            o.put("fetchStatus", com.bachdathan.r1y.activation.ActivationState.fetchStatus);
+            o.put("url", com.bachdathan.r1y.activation.OTAConfigManager.getLastOtaUrl());
+            o.put("httpCode", com.bachdathan.r1y.activation.OTAConfigManager.getLastHttpCode());
+            o.put("response", com.bachdathan.r1y.activation.OTAConfigManager.getLastResponse());
         } catch (Exception e) {
             return json(500, "{\"ok\":false}");
         }
@@ -1076,7 +1084,7 @@ public class WebServer extends NanoHTTPD {
         + ".wifi.sel{border-color:#5b5bd6;background:#1b1e2b}.wifi .nm{flex:1}.wifi .lk{font-size:12px;color:#9aa3b2}"
         + "</style></head><body>"
         + "<div class=\"top\"><div class=\"logo\">&#9635;</div>"
-        + "<div><div class=\"name\">R1-Y</div><div class=\"sub\" id=\"sub\">... &middot; v1.9.0</div></div>"
+        + "<div><div class=\"name\">R1-Y</div><div class=\"sub\" id=\"sub\">... &middot; v1.9.1</div></div>"
         + "<div class=\"ready\">&#9679; S&#7841;n s&#224;ng</div></div>"
         + "<div class=\"card\" id=\"card-setup\">"
         + "<h3>&#128225; C&#224;i &#273;&#7863;t WiFi cho loa</h3>"
@@ -1204,7 +1212,13 @@ public class WebServer extends NanoHTTPD {
         + "async function loadAct(){try{var r=await fetch('/api/assistant');var j=await r.json();var b=document.getElementById('actBox');"
         + "if(j.activated){b.textContent='\\u0110\\u00e3 k\\u00edch ho\\u1ea1t xiaozhi.me. Tr\\u1ee3 l\\u00fd s\\u1eb5n s\\u00e0ng.';}"
         + "else if(j.code){b.innerHTML='M\\u00e3 k\\u00edch ho\\u1ea1t: <b style=\\\"font-size:30px;letter-spacing:5px\\\">'+j.code+'</b><br>V\\u00e0o xiaozhi.me, th\\u00eam thi\\u1ebft b\\u1ecb v\\u00e0 nh\\u1eadp m\\u00e3 n\\u00e0y. Trang t\\u1ef1 c\\u1eadp nh\\u1eadt.';}"
-        + "else{b.textContent=j.error?('Ch\\u01b0a l\\u1ea5y \\u0111\\u01b0\\u1ee3c m\\u00e3: '+j.error):'Ch\\u01b0a c\\u00f3 m\\u00e3. B\\u1ea5m \\\"L\\u1ea5y m\\u00e3 k\\u00edch ho\\u1ea1t\\\".';}}catch(e){}}"
+        + "else{var t='';"
+        + "if(j.fetchStatus){t+=j.fetchStatus;}"
+        + "if(j.httpCode){t+='\\nM\\u00e1y ch\\u1ee7 tr\\u1ea3 HTTP '+j.httpCode+'.';}"
+        + "if(j.error){t+='\\nL\\u1ed7i: '+j.error;}"
+        + "if(!t){t='Ch\\u01b0a c\\u00f3 m\\u00e3. B\\u1ea5m \\\"L\\u1ea5y m\\u00e3 k\\u00edch ho\\u1ea1t\\\".';}"
+        + "if(j.response){t+='\\n\\nM\\u00e1y ch\\u1ee7 tr\\u1ea3 v\\u1ec1:\\n'+j.response;}"
+        + "b.style.whiteSpace='pre-wrap';b.textContent=t;}}catch(e){}}"
         + "async function startAct(){var b=document.getElementById('actBox');b.textContent='\\u0110ang l\\u1ea5y m\\u00e3...';try{await fetch('/api/assistant',{method:'POST'});}catch(e){}setTimeout(loadAct,3000);}"
         + "setInterval(function(){if(document.getElementById('tab-troly').style.display!=='none'){loadAct();}},5000);"
         + "setInterval(function(){var a=document.getElementById('nowBox');if(a){plState();}},5000);"
@@ -1288,7 +1302,10 @@ public class WebServer extends NanoHTTPD {
         + "if(j.bluetoothA2dp){t+=' | \u0111ang ph\u00e1t qua Bluetooth';}"
         + "var e=document.getElementById('sndInfo');if(e)e.textContent=t;"
         + "if(document.getElementById('sndInfo')&&j.route){var si=document.getElementById('sndInfo');si.textContent='\u0110\u01b0\u1eddng ra: '+j.route+' \u2014 \u00e2m l\u01b0\u1ee3ng '+(j.routeVolume!=null?j.routeVolume+'/'+j.routeVolumeMax:'?');}"
-        + "var c=document.getElementById('codecInfo');if(c){c.textContent=j.opusSupported?'Codec: c\u00f3 Opus (d\u00f9ng \u0111\u01b0\u1ee3c c\u1ea3 Opus l\u1eabn AAC)':'Codec: KH\u00d4NG c\u00f3 Opus/WebM \u2014 app t\u1ef1 \u01b0u ti\u00ean AAC/m4a';}}catch(e){}}"
+        + "var c=document.getElementById('codecInfo');if(c){"
+        + "if(j.avoidOpus){c.textContent='Codec: m\u00e1y KH\u00d4NG gi\u1ea3i m\u00e3 Opus/WebM \u2014 app b\u1eaft bu\u1ed9c ch\u1ecdn AAC/m4a ('+(j.aacSupported?'c\u00f3':'KH\u00d4NG c\u00f3')+' AAC)';}"
+        + "else{c.textContent='Codec: c\u00f3 Opus (d\u00f9ng \u0111\u01b0\u1ee3c c\u1ea3 Opus l\u1eabn AAC)';}"
+        + "}}catch(e){}}"
         + "async function sndBeep(){var m=document.getElementById('sndMsg');m.textContent='\u0110ang ph\u00e1t b\u00edp...';"
         + "try{var r=await fetch('/api/audio/test?kind=beep',{method:'POST'});var j=await r.json();"
         + "m.textContent=j.message||j.error;}catch(e){m.textContent='L\u1ed7i: '+e.message;}sndStatus();}"
