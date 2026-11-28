@@ -511,6 +511,8 @@ public class WebServer extends NanoHTTPD {
             o.put("auto_wake", config.isAutoWakeEnabled());
             o.put("ai_use_opus", config.isAiUseOpus());
             o.put("cache_audio", config.isCacheAudio());
+            o.put("decode_audio", config.isDecodeAudio());
+            o.put("try_opus", config.isTryOpus());
             o.put("setup_mode", config.isSetupMode());
             o.put("home_wifi_ssid", config.getHomeWifiSsid());
         } catch (Exception ignored) {}
@@ -553,6 +555,8 @@ public class WebServer extends NanoHTTPD {
             if (o.has("auto_wake")) config.setAutoWakeEnabled(o.optBoolean("auto_wake", false));
             if (o.has("ai_use_opus")) config.setAiUseOpus(o.optBoolean("ai_use_opus", true));
             if (o.has("cache_audio")) config.setCacheAudio(o.optBoolean("cache_audio", true));
+            if (o.has("decode_audio")) config.setDecodeAudio(o.optBoolean("decode_audio", true));
+            if (o.has("try_opus")) config.setTryOpus(o.optBoolean("try_opus", false));
             return json(200, "{\"ok\":true}");
         } catch (Exception e) {
             return json(400, "{\"ok\":false,\"error\":\"" + e.getMessage() + "\"}");
@@ -744,6 +748,8 @@ public class WebServer extends NanoHTTPD {
             o.put("title", com.bachdathan.r1y.service.AudioPlaybackService.getNowPlayingTitle());
             o.put("url", com.bachdathan.r1y.service.AudioPlaybackService.getNowPlayingUrl());
             o.put("lastError", com.bachdathan.r1y.service.AudioPlaybackService.lastError);
+            o.put("usingDecoder", com.bachdathan.r1y.service.AudioPlaybackService.usingDecoder);
+            o.put("decoderPosMs", com.bachdathan.r1y.util.StreamDecoder.positionMs);
             o.put("volume", com.bachdathan.r1y.util.AudioDiag.status(context).optInt("volume", -1));
         } catch (Exception e) {
             try { o.put("ok", false); o.put("error", String.valueOf(e.getMessage())); } catch (Exception ignored) {}
@@ -776,6 +782,32 @@ public class WebServer extends NanoHTTPD {
                 o.put("kind", "volume");
                 o.put("status", com.bachdathan.r1y.util.AudioDiag.status(context));
                 o.put("message", ok ? "Đã nâng âm lượng nhạc." : "Không đổi được âm lượng.");
+            } else if ("decoder".equals(kind)) {
+                // Thử đúng đường phát mới: tải link -> tự giải mã -> AudioTrack.
+                // Trả lời được câu "tự giải mã có ra tiếng không" mà không cần
+                // phát cả bài rồi ngồi đoán.
+                String url = param(session, "url");
+                if (url == null || url.trim().isEmpty()) {
+                    url = com.bachdathan.r1y.service.AudioPlaybackService.getNowPlayingUrl();
+                }
+                if (url == null || url.trim().isEmpty()) {
+                    o.put("ok", false);
+                    o.put("error", "Chưa có bài nào — phát 1 bài rồi thử lại.");
+                    return json(200, o.toString());
+                }
+                o.put("kind", "decoder");
+                o.put("url", url);
+                String file = com.bachdathan.r1y.util.UrlProbe.download(context, url);
+                if (file == null) {
+                    o.put("ok", false);
+                    o.put("error", "Không tải được link (xem /api/audio/probe).");
+                    return json(200, o.toString());
+                }
+                o.put("file", file);
+                o.put("result", com.bachdathan.r1y.util.StreamDecoder.decodeToSpeaker(
+                    context, new java.io.File(file),
+                    com.bachdathan.r1y.util.AudioDiag.streamType(context), 12));
+                o.put("ok", true);
             } else if ("url".equals(kind)) {
                 String url = param(session, "url");
                 if (url == null || url.trim().isEmpty()) {
@@ -954,6 +986,8 @@ public class WebServer extends NanoHTTPD {
             o.put("lastError", err == null ? "" : err);
             o.put("lastProbe", com.bachdathan.r1y.service.AudioPlaybackService.lastProbe);
             o.put("route", com.bachdathan.r1y.util.AudioDiag.streamName(context));
+            o.put("usingDecoder", com.bachdathan.r1y.service.AudioPlaybackService.usingDecoder);
+            o.put("decoderResult", com.bachdathan.r1y.util.StreamDecoder.lastResult);
 
             String verdict;
             String advice = "";
@@ -961,7 +995,10 @@ public class WebServer extends NanoHTTPD {
                 verdict = "Đã chuẩn bị xong nhưng bộ phát chưa chạy được khung nào";
                 advice = "Kiểm tra link (nút bên dưới) và thử chất lượng 'Tương thích'.";
             } else if (playing && pos > 0) {
-                verdict = "Đang chạy tới " + (pos / 1000) + " giây";
+                verdict = "Đang chạy tới " + (pos / 1000) + " giây"
+                    + (com.bachdathan.r1y.service.AudioPlaybackService.usingDecoder
+                       ? " (tự giải mã, đẩy thẳng ra loa — không qua MediaPlayer)"
+                       : " (qua MediaPlayer)");
                 advice = "Nếu tai không nghe gì: bấm 'Phát thử tiếng bíp'. Bíp kêu = "
                        + "đường ra OK, lỗi ở codec; bíp im = đường ra/âm lượng.";
             } else if (!err.isEmpty()) {
@@ -1094,7 +1131,7 @@ public class WebServer extends NanoHTTPD {
         + ".wifi.sel{border-color:#5b5bd6;background:#1b1e2b}.wifi .nm{flex:1}.wifi .lk{font-size:12px;color:#9aa3b2}"
         + "</style></head><body>"
         + "<div class=\"top\"><div class=\"logo\">&#9635;</div>"
-        + "<div><div class=\"name\">R1-Y</div><div class=\"sub\" id=\"sub\">... &middot; v1.9.2</div></div>"
+        + "<div><div class=\"name\">R1-Y</div><div class=\"sub\" id=\"sub\">... &middot; v1.9.3</div></div>"
         + "<div class=\"ready\">&#9679; S&#7841;n s&#224;ng</div></div>"
         + "<div class=\"card\" id=\"card-setup\">"
         + "<h3>&#128225; C&#224;i &#273;&#7863;t WiFi cho loa</h3>"
@@ -1132,11 +1169,18 @@ public class WebServer extends NanoHTTPD {
         + "<div class=\"msg\" id=\"sndInfo\"></div>"
         + "<div class=\"msg\" id=\"codecInfo\"></div>"
         + "<button class=\"btn\" onclick=\"diagPlaying()\">&#128269; Ki&#7875;m tra v&#236; sao im (b&#225;o &#273;ang ph&#225;t m&#224; kh&#244;ng ra ti&#7871;ng)</button>"
+        + "<button class=\"btn primary\" onclick=\"diagDecoder()\">&#127925; Th&#7917; t&#7921; gi&#7843;i m&#227; b&#224;i &#273;ang ph&#225;t (12 gi&#226;y)</button>"
+        + "<div class=\"msg\" id=\"decTestBox\"></div>"
         + "<div class=\"msg\" id=\"diagBox\"></div>"
         + "<h3 style=\"margin-top:18px\">&#9881; Ch&#7845;t l&#432;&#7907;ng &#226;m thanh</h3>"
         + "<select id=\"audioQ\" onchange=\"saveAudioQ()\" style=\"width:100%;padding:12px;border-radius:10px;border:1px solid #2a2f3a;background:#0b0d11;color:#e8eaf0\">"
         + "<option value=\"high\">Cao nh&#7845;t (Opus, nghe hay nh&#7845;t)</option>"
         + "<option value=\"compat\">T&#432;&#417;ng th&#237;ch (AAC/m4a)</option></select>"
+        + "<div class=\"msg\">Loa R1 hay &#8220;b&#225;o &#273;ang ph&#225;t m&#224; im&#8221; v&#7899;i MediaPlayer. "
+        + "B&#7853;t &#244; d&#432;&#7899;i &#273;&#7875; app t&#7921; gi&#7843;i m&#227; r&#7891;i &#273;&#7849;y th&#7859;ng ra loa "
+        + "(c&#249;ng &#273;&#432;&#7901;ng v&#7899;i ti&#7871;ng b&#237;p &#273;ang k&#234;u &#273;&#432;&#7907;c).</div>"
+        + "<div class=\"row\"><button class=\"btn primary\" id=\"decBtn\" onclick=\"toggleDecode()\">&#9881; T&#7921; gi&#7843;i m&#227;: ...</button></div>"
+        + "<div class=\"msg\" id=\"decMsg\"></div>"
         + "<h3 style=\"margin-top:18px\">&#9654; B&#7897; l&#7845;y ti&#7871;ng YouTube</h3>"
         + "<div>&#272;&#7875; <code>[]</code> (m&#7863;c &#273;&#7883;nh) loa t&#7921; d&#242; m&#225;y ch&#7911; YouTube c&#244;ng c&#7897;ng &#273;ang s&#7889;ng: t&#236;m ki&#7871;m v&#224; l&#7845;y &#226;m thanh gi&#7889;ng Tube/LiteTube. Khi c&#243; m&#225;y ch&#7911; ri&#234;ng th&#236; thay <code>[]</code> b&#7857;ng &#273;&#7883;a ch&#7881; &#273;&#243;.</div>"
         + "<div class=\"msg\" id=\"ytInfo\">&#272;ang ki&#7875;m tra m&#225;y ch&#7911; c&#244;ng c&#7897;ng...</div>"
@@ -1233,13 +1277,19 @@ public class WebServer extends NanoHTTPD {
         + "async function startAct(){var b=document.getElementById('actBox');b.textContent='\\u0110ang l\\u1ea5y m\\u00e3...';try{await fetch('/api/assistant',{method:'POST'});}catch(e){}setTimeout(loadAct,3000);}"
         + "setInterval(function(){if(document.getElementById('tab-troly').style.display!=='none'){loadAct();}},5000);"
         + "setInterval(function(){var a=document.getElementById('nowBox');if(a){plState();}},5000);"
+        + "setTimeout(loadDec,1200);"
         + "async function diagPlaying(){var b=document.getElementById('diagBox');if(!b){return;}"
         + "b.textContent='\\u0110ang ki\\u1ec3m tra...';"
         + "var t='';try{var r=await fetch('/api/audio/playing');var j=await r.json();"
         + "t='K\\u1ebft lu\\u1eadn: '+(j.verdict||'?')+'\\n';"
         + "if(j.advice){t+='N\\u00ean l\\u00e0m: '+j.advice+'\\n';}"
         + "t+='\\u0110\\u01b0\\u1eddng ra: '+(j.route||'?')+' | v\\u1ecb tr\\u00ed: '+j.positionMs+'ms';"
-        + "if(j.lastError){t+='\\nL\\u1ed7i MediaPlayer: '+j.lastError;}"
+        + "if(j.usingDecoder){t+='\\n\\u0110ang \\u0111i \\u0111\\u01b0\\u1eddng: t\\u1ef1 gi\\u1ea3i m\\u00e3 (AudioTrack)';}"
+        + "else{t+='\\n\\u0110ang \\u0111i \\u0111\\u01b0\\u1eddng: MediaPlayer';}"
+        + "if(j.decoderResult){try{var dr=JSON.parse(j.decoderResult);"
+        + "t+='\\nB\\u1ed9 gi\\u1ea3i m\\u00e3: '+(dr.ok?'OK':'kh\\u00f4ng ra ti\\u1ebfng')+' | '+(dr.mime||'?')+' | '+(dr.sampleRate||'?')+'Hz | '+(dr.channels||'?')+'k\\u00eanh | peak '+dr.peak;"
+        + "if(dr.error){t+='\\nL\\u1ed7i gi\\u1ea3i m\\u00e3: '+dr.error;}}catch(e){}}"
+        + "if(j.lastError){t+='\\nL\\u1ed7i cu\\u1ed1i: '+j.lastError;}"
         + "var u=null;try{var r2=await fetch('/api/player');var j2=await r2.json();u=j2.url;}catch(e){}"
         + "if(u){t+='\\n\\n\\u0110ang ki\\u1ec3m tra link...';b.style.whiteSpace='pre-wrap';b.textContent=t;"
         + "try{var r3=await fetch('/api/audio/probe?url='+encodeURIComponent(u));var j3=await r3.json();"
@@ -1320,12 +1370,27 @@ public class WebServer extends NanoHTTPD {
         + "if(j.avoidOpus){c.textContent='Codec: m\u00e1y KH\u00d4NG gi\u1ea3i m\u00e3 Opus/WebM \u2014 app b\u1eaft bu\u1ed9c ch\u1ecdn AAC/m4a ('+(j.aacSupported?'c\u00f3':'KH\u00d4NG c\u00f3')+' AAC)';}"
         + "else{c.textContent='Codec: c\u00f3 Opus (d\u00f9ng \u0111\u01b0\u1ee3c c\u1ea3 Opus l\u1eabn AAC)';}"
         + "}}catch(e){}}"
+        + "async function diagDecoder(){var b=document.getElementById('decTestBox');"
+        + "b.textContent='\\u0110ang t\\u1ea3i + gi\\u1ea3i m\\u00e3 12 gi\\u00e2y \\u0111\\u1ea7u...';"
+        + "try{var r=await fetch('/api/audio/test?kind=decoder',{method:'POST'});var j=await r.json();"
+        + "var d=j.result||{};var t=(j.ok?'':'L\\u1ed7i: '+(j.error||'?')+'\\n');"
+        + "t+='Codec: '+(d.codec||'?')+' | '+(d.mime||'?')+' | '+(d.sampleRate||'?')+'Hz | '+(d.channels||'?')+'k\\u00eanh';"
+        + "t+='\\n\\u0110\\u00e3 ghi ra loa: '+(d.bytes||0)+' byte ('+(d.seconds||0)+' gi\\u00e2y) | peak '+d.peak;"
+        + "t+='\\n-> '+(d.ok?'C\\u00d3 TI\\u1ebeNG (\\u0111\\u01b0\\u1eddng t\\u1ef1 gi\\u1ea3i m\\u00e3 ch\\u1ea1y \\u0111\\u01b0\\u1ee3c)':(d.error||'kh\\u00f4ng ra ti\\u1ebfng'));"
+        + "b.style.whiteSpace='pre-wrap';b.textContent=t;}catch(e){b.textContent='L\\u1ed7i: '+e.message;}}"
         + "async function sndBeep(){var m=document.getElementById('sndMsg');m.textContent='\u0110ang ph\u00e1t b\u00edp...';"
         + "try{var r=await fetch('/api/audio/test?kind=beep',{method:'POST'});var j=await r.json();"
         + "m.textContent=j.message||j.error;}catch(e){m.textContent='L\u1ed7i: '+e.message;}sndStatus();}"
         + "async function sndVol(){var m=document.getElementById('sndMsg');"
         + "try{var r=await fetch('/api/audio/test?kind=volume',{method:'POST'});var j=await r.json();"
         + "m.textContent=j.message||'';}catch(e){m.textContent='L\u1ed7i: '+e.message;}sndStatus();}"
+        + "async function loadDec(){try{var r=await fetch('/api/settings');var j=await r.json();"
+        + "var b=document.getElementById('decBtn');if(b){b.textContent='\\u2699 T\\u1ef1 gi\\u1ea3i m\\u00e3: '+(j.decode_audio?'B\\u1eacT':'T\\u1eaeT');}}catch(e){}}"
+        + "async function toggleDecode(){var b=document.getElementById('decBtn');var m=document.getElementById('decMsg');"
+        + "var cur=b.textContent.indexOf('B\\u1eacT')>=0;"
+        + "try{await fetch('/api/settings',{method:'POST',body:JSON.stringify({decode_audio:!cur})});"
+        + "if(m){m.textContent=!cur?'\\u0110\\u00e3 b\\u1eadt t\\u1ef1 gi\\u1ea3i m\\u00e3. B\\u1ea5m Ph\\u00e1t l\\u1ea1i b\\u00e0i \\u0111\\u1ec3 \\u00e1p d\\u1ee5ng.':'\\u0110\\u00e3 t\\u1eaft, quay l\\u1ea1i MediaPlayer.';}}catch(e){if(m){m.textContent='L\\u1ed7i: '+e.message;}}"
+        + "loadDec();}"
         + "async function loadAudioQ(){var r=await fetch('/api/settings');var j=await r.json();"
         + "document.getElementById('audioQ').value=j.audio_quality||'high';}"
         + "var pickedSsid='';"
