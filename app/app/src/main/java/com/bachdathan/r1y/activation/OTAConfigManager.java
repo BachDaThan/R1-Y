@@ -177,22 +177,22 @@ public class OTAConfigManager {
             }
             reader.close();
             
-            Log.d(TAG, "OTA Response (" + statusCode + "): " + responseBody);
+            String body = responseBody.toString();
+            Log.d(TAG, "OTA Response (" + statusCode + "): " + body);
             lastHttpCode = statusCode;
-            lastResponse = responseBody.length() > 600
-                ? responseBody.substring(0, 600) : responseBody;
+            lastResponse = body.length() > 600 ? body.substring(0, 600) : body;
             
             // Theo đặc tả OTA của Xiaozhi: 200 = cấu hình bình thường,
             // 202/203 = THIẾT BỊ CẦN KÍCH HOẠT (body vẫn là JSON hợp lệ có
             // "activation":{"code":...}). Chỉ 4xx/5xx mới thực sự là lỗi.
             // Trước đây mọi mã khác 200 đều bị coi là lỗi nên không bao giờ lấy
             // được mã kích hoạt -> "bấm lấy mã mà cứ hiện vậy hoài".
-            if (statusCode >= 400 || responseBody == null || responseBody.trim().isEmpty()) {
-                throw new Exception("HTTP " + statusCode + ": " + responseBody);
+            if (statusCode >= 400 || body.trim().isEmpty()) {
+                throw new Exception("HTTP " + statusCode + ": " + body);
             }
-            
+
             // Parse response
-            return parseOTAResponse(responseBody.toString());
+            return parseOTAResponse(body);
             
         } finally {
             conn.disconnect();
