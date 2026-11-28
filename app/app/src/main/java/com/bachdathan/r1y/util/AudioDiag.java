@@ -90,6 +90,16 @@ public final class AudioDiag {
             // giải mã stream của máy chủ công cộng không?").
             boolean opus = com.bachdathan.r1y.youtube.AudioFallback.deviceSupportsOpus();
             o.put("opusSupported", opus);
+            // Web cần BIẾT app có bắt buộc tránh Opus hay không. Trước đây web chỉ
+            // nhận opusSupported nên luôn in "có Opus (dùng được cả hai)" trong khi
+            // app lại tránh Opus vì Android 5.1 — hai câu nói hai chuyện, đọc thấy vô lý.
+            boolean aac = com.bachdathan.r1y.youtube.AudioFallback.deviceSupportsAac();
+            o.put("aacSupported", aac);
+            o.put("avoidOpus", com.bachdathan.r1y.youtube.AudioFallback.mustAvoidOpus(ctx));
+            o.put("decodeAudio", new com.bachdathan.r1y.config.R1YConfig(ctx).isDecodeAudio());
+            o.put("decoderBusy", com.bachdathan.r1y.util.StreamDecoder.busy);
+            o.put("decoderCodec", com.bachdathan.r1y.util.StreamDecoder.codecName);
+            o.put("decoderResult", com.bachdathan.r1y.util.StreamDecoder.lastResult);
             o.put("codecAdvice", opus
                 ? "Loa có bộ giải mã Opus — dùng được cả Opus lẫn AAC."
                 : "Loa KHÔNG có bộ giải mã Opus/WebM (bình thường với Android 5.1). "

@@ -161,7 +161,7 @@ public final class UrlProbe {
 
             c = (HttpURLConnection) new URL(url).openConnection();
             c.setConnectTimeout(10000);
-            c.setReadTimeout(20000);
+            c.setReadTimeout(30000);
             c.setInstanceFollowRedirects(true);
             for (Map.Entry<String, String> e : headersFor(url).entrySet()) {
                 c.setRequestProperty(e.getKey(), e.getValue());
@@ -184,23 +184,40 @@ public final class UrlProbe {
             java.io.FileOutputStream fos = new java.io.FileOutputStream(out);
             byte[] buf = new byte[16 * 1024];
             int n, total = 0, checked = 0;
-            while ((n = in.read(buf)) > 0) {
-                if (checked < 16) {
-                    int take = Math.min(16 - checked, n);
-                    System.arraycopy(buf, 0, magic, checked, take);
-                    checked += take;
+            // Mạng WiFi 2.4G của loa hay đứt giữa bài. Nếu đã tải được phần đầu
+            // ĐÚNG định dạng thì vẫn giữ file (phát được đoạn đã có) thay vì
+            // xoá sạch rồi báo "Tải link thất bại" — đúng như ảnh người dùng gửi.
+            try {
+                while ((n = in.read(buf)) > 0) {
+                    if (checked < 16) {
+                        int take = Math.min(16 - checked, n);
+                        System.arraycopy(buf, 0, magic, checked, take);
+                        checked += take;
+                    }
+                    fos.write(buf, 0, n);
+                    total += n;
+                    if (total > 60 * 1024 * 1024) {   // chặn file rác quá lớn
+                        Log.w(TAG, "File quá lớn, dừng tải");
+                        break;
+                    }
                 }
-                fos.write(buf, 0, n);
-                total += n;
-                if (total > 60 * 1024 * 1024) {   // chặn file rác quá lớn
-                    Log.w(TAG, "File quá lớn, dừng tải");
-                    break;
-                }
+            } catch (Throwable t) {
+                Log.w(TAG, "Tải dở rồi đứt ở " + total + " byte: " + t);
+            } finally {
+                try { fos.close(); } catch (Throwable ignored) {}
+                try { in.close(); } catch (Throwable ignored) {}
             }
-            fos.close();
-            in.close();
 
-            Log.i(TAG, "Đã tải " + total + " byte, magic=" + describeMagic(magic, 16));
+            String fmt = describeMagic(magic, 16);
+            boolean usable = total > 256 * 1024
+                && !fmt.startsWith("khác (") && !"?".equals(fmt);
+            if (total <= 0 || (fmt.startsWith("khác (") && total < 256 * 1024)) {
+                out.delete();
+                Log.w(TAG, "Tải link: chỉ được " + total + " byte (" + fmt + ")");
+                return null;
+            }
+            Log.i(TAG, "Đã tải " + total + " byte, magic=" + fmt
+                + (usable ? "" : " (file ngắn, vẫn thử phát)"));
             return out.getAbsolutePath();
         } catch (Throwable t) {
             Log.w(TAG, "Tải link lỗi: " + t);

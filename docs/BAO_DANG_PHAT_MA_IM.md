@@ -99,3 +99,37 @@ Link: HTTP 206 | audio/mp4 | mp4/m4a
 Nếu thấy dòng này mà **vẫn im**, thì lỗi nằm ở bước giải mã AAC của ROM — bước tiếp
 theo sẽ là phát bằng `AudioTrack` + `MediaExtractor` (cách các client Xiaozhi khác
 trên R1 vẫn làm) thay vì `MediaPlayer`.
+
+## v1.9.3 — "báo đang phát mà im" thật ra là MediaPlayer im, không phải link hỏng
+
+Bằng chứng từ ảnh chụp v1.9.1: **tiếng bíp thử loa KÊU** (đi qua `AudioTrack`),
+nhưng bài nhạc thì im và báo `Lỗi MediaPlayer: Tải link thất bại`. Hai đường khác
+nhau, và chỉ đường `AudioTrack` là chắc chắn tới được chip âm thanh của R1.
+
+Nên từ v1.9.3 app **tự giải mã** rồi đẩy PCM thẳng ra loa:
+
+```
+tải file → MediaExtractor (đọc khung) → MediaCodec (giải mã AAC/MP3)
+        → AudioTrack MODE_STREAM (ghi PCM) → DAC → loa
+```
+
+- Không phụ thuộc MediaPlayer của ROM (thứ hay im với MP4/AAC tải từ CDN).
+- Đọc thông số **thật** từ bộ giải mã (`INFO_OUTPUT_FORMAT_CHANGED`) rồi mới tạo
+  `AudioTrack` — nhiều file khai 44.1 kHz nhưng giải ra 48 kHz; tạo sai thì có
+  tiếng nhưng rè/nhanh như "garage".
+- Đếm `peak` của PCM đã ghi: `peak = 0` nghĩa là bộ giải mã chạy mà trả toàn số 0
+  (ROM hỏng codec) — khác hẳn "không giải mã được". Hai lỗi này sửa hai cách khác nhau.
+- Không ra tiếng thì **tự quay lại MediaPlayer** cho bài đó, nên không mất tính năng
+  nào. Tắt được bằng nút **⚙ Tự giải mã** ở tab Nhạc.
+
+### "Tải link thất bại" cũng bớt oan
+Trước đây chỉ cần mạng WiFi 2.4G của loa đứt giữa bài là app **xoá cả file** rồi
+báo `Tải link thất bại` — dù 90% bài đã nằm trên máy. Nay: giữ phần đã tải nếu
+nhận ra đúng định dạng, và nếu vẫn không tải được thì **đưa URL thẳng cho
+MediaPlayer** thay vì bỏ cuộc.
+
+### Cách tự kiểm tra (tab Nhạc)
+1. **🎵 Thử tự giải mã bài đang phát (12 giây)** → phải thấy
+   `Codec: OMX.google.aac.decoder | audio/mp4a-latm | 44100Hz | 2 kênh` và `peak > 0`.
+2. Nếu `peak = 0` → ROM giải mã hỏng với định dạng đó, đổi bài/ép chất lượng khác.
+3. Nếu `bytes = 0` → file không có luồng âm thanh (máy chủ trả video hoặc trang lỗi).

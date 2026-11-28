@@ -11,6 +11,7 @@ import android.os.PowerManager;
 import android.util.Log;
 
 import com.bachdathan.r1y.config.R1YConfig;
+import com.bachdathan.r1y.util.StreamDecoder;
 import com.bachdathan.r1y.youtube.AudioFallback;
 import com.bachdathan.r1y.youtube.ResolverManager;
 
@@ -68,6 +69,11 @@ public class AudioPlaybackService extends Service implements
     /** Kết quả kiểm tra link gần nhất (UrlProbe). */
     public static volatile String lastProbe = "";
 
+    /** Đang phát bằng bộ tự giải mã (thay cho MediaPlayer) hay không. */
+    public static volatile boolean usingDecoder = false;
+    /** Bộ giải mã đã thử và thất bại cho bài này → đừng thử lại (tránh vòng lặp). */
+    private volatile boolean decodeFailed = false;
+
     /** Lặp lại bài đang phát (như YouTube "lặp 1 bài"). */
     public static volatile boolean repeatOne = false;
     /** Đang tạm dừng (người dùng bấm Tạm dừng). */
@@ -91,6 +97,7 @@ public class AudioPlaybackService extends Service implements
 
     /** Vị trí phát hiện tại (ms). -1 nếu chưa có bộ phát. */
     public int getPositionMs() {
+        if (usingDecoder) return StreamDecoder.positionMs;
         try {
             if (mediaPlayer != null && isPrepared) return mediaPlayer.getCurrentPosition();
         } catch (Throwable ignored) {}
@@ -224,6 +231,7 @@ public class AudioPlaybackService extends Service implements
 
         nowPlayingUrl = url;
         paused = false;
+        decodeFailed = false;
 
         try {
             // Request audio focus
@@ -257,18 +265,20 @@ public class AudioPlaybackService extends Service implements
             if (url.startsWith("http://") || url.startsWith("https://")) {
                 playable = com.bachdathan.r1y.util.UrlProbe.download(this, url);
                 if (playable == null) {
-                    Log.e(TAG, "Không tải được link: " + url);
-                    lastError = "Tải link thất bại (xem mục Kiểm tra ở web)";
-                    if (callback != null) callback.onPlaybackError(lastError);
-                    onPlaybackCompleted();
-                    return;
+                    // Không tải được KHÔNG có nghĩa là không phát được: đưa URL
+                    // thẳng cho MediaPlayer (nó tự xin từng đoạn). Trước v1.9.3
+                    // chỗ này dừng luôn với "Tải link thất bại".
+                    Log.w(TAG, "Không tải được link, thử phát trực tiếp: " + url);
+                    lastError = "Không tải được cả bài — đang thử phát trực tiếp";
+                    playable = url;
                 }
             }
-            mediaPlayer.setDataSource(playable);
-            prepareStartedAt = System.currentTimeMillis();
-            mediaPlayer.prepareAsync();
-            
-        } catch (IOException e) {
+            playLocal(playable);
+
+        } catch (Exception e) {
+            // playLocal() đã tự bắt lỗi MediaPlayer; đây chỉ còn lỗi hàng đợi âm
+            // thanh/Intent. Bắt rộng vì javac không cho catch IOException khi
+            // trong try không còn lời gọi nào ném IOException.
             Log.e(TAG, "Error playing from URL", e);
             if (callback != null) {
                 callback.onPlaybackError(e.getMessage());
@@ -277,6 +287,82 @@ public class AudioPlaybackService extends Service implements
         }
     }
     
+    /**
+     * Chọn đường phát cho một file đã có trên máy: tự giải mã trước, MediaPlayer sau.
+     *
+     * Vì sao mặc định tự giải mã: trên loa R1 tiếng bíp (AudioTrack) KÊU, nhưng
+     * MediaPlayer im hoặc báo "Tải link thất bại" với file MP4/AAC — MediaPlayer
+     * của ROM cũ phải đi qua OMX/AudioSink, còn AudioTrack ghi PCM thô là đường
+     * ngắn nhất tới DAC. Nếu tự giải mã không ra tiếng thì vẫn quay lại
+     * MediaPlayer (không mất tính năng nào).
+     */
+    private void playLocal(String playable) {
+        File f = new File(playable);
+        if (f.exists() && !decodeFailed && StreamDecoder.canTry(f) && decodeEnabled()) {
+            if (startDecoder(f)) return;
+        }
+        try {
+            mediaPlayer.setDataSource(playable);
+            prepareStartedAt = System.currentTimeMillis();
+            mediaPlayer.prepareAsync();
+        } catch (Throwable t) {
+            Log.e(TAG, "MediaPlayer setDataSource lỗi: " + t);
+            lastError = "Không mở được file: " + t.getMessage();
+            if (callback != null) callback.onPlaybackError(lastError);
+            onPlaybackCompleted();
+        }
+    }
+
+    /** Người dùng có bật "tự giải mã" trên web không (mặc định BẬT). */
+    private boolean decodeEnabled() {
+        try {
+            return new R1YConfig(this).isDecodeAudio();
+        } catch (Throwable ignored) {
+            return true;
+        }
+    }
+
+    /** Chạy bộ tự giải mã ở luồng nền. true = đã nhận việc (đừng dùng MediaPlayer nữa). */
+    private boolean startDecoder(final File f) {
+        usingDecoder = true;
+        decodeFailed = false;
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                org.json.JSONObject r = StreamDecoder.decodeToSpeaker(
+                    AudioPlaybackService.this, f,
+                    com.bachdathan.r1y.util.AudioDiag.streamType(AudioPlaybackService.this), 0);
+                boolean ok = r.optBoolean("ok", false);
+                boolean cancelled = r.optBoolean("cancelled", false);
+                usingDecoder = false;
+                if (cancelled) return;
+                if (ok) {
+                    lastError = "";
+                    Log.i(TAG, "Tự giải mã phát xong: " + r.optInt("seconds") + "s, peak="
+                        + r.optInt("peak"));
+                    if (repeatOne && nowPlayingUrl != null) {
+                        playFromUrl(nowPlayingUrl);
+                        return;
+                    }
+                    nowPlayingUrl = null;
+                    onPlaybackCompleted();
+                } else {
+                    // Không ra tiếng bằng bộ giải mã -> quay lại MediaPlayer cho bài này.
+                    decodeFailed = true;
+                    lastError = "Tự giải mã: " + r.optString("error", "không ra tiếng")
+                        + " — đã chuyển sang MediaPlayer";
+                    Log.w(TAG, lastError);
+                    playingFile = f;
+                    playLocal(f.getAbsolutePath());
+                }
+            }
+        }, "R1Y-Decode").start();
+        return true;
+    }
+
+    /** File đang phát bằng bộ giải mã (để pause/resume/stop đúng chỗ). */
+    private volatile File playingFile = null;
+
     /**
      * Phát audio từ raw data (PCM)
      */
@@ -309,6 +395,8 @@ public class AudioPlaybackService extends Service implements
      */
     /** Ngưng phát hẳn bài đang phát (khác Tạm dừng: không phát tiếp được nữa). */
     public void stop() {
+        if (usingDecoder) StreamDecoder.stopPlayback();
+        usingDecoder = false;
         try {
             if (mediaPlayer != null) {
                 if (mediaPlayer.isPlaying()) mediaPlayer.stop();
@@ -327,6 +415,11 @@ public class AudioPlaybackService extends Service implements
      * Tạm dừng
      */
     public void pause() {
+        if (usingDecoder) {
+            StreamDecoder.pausePlayback();
+            paused = true;
+            return;
+        }
         if (mediaPlayer != null && isPrepared) {
             try {
                 if (mediaPlayer.isPlaying()) {
@@ -344,6 +437,11 @@ public class AudioPlaybackService extends Service implements
      * Tiếp tục phát
      */
     public void resume() {
+        if (usingDecoder) {
+            StreamDecoder.resumePlayback();
+            paused = false;
+            return;
+        }
         if (mediaPlayer != null && isPrepared) {
             try {
                 mediaPlayer.start();
@@ -549,6 +647,7 @@ public class AudioPlaybackService extends Service implements
     }
     
     public boolean isPlaying() {
+        if (usingDecoder) return StreamDecoder.busy && !paused;
         return mediaPlayer != null && mediaPlayer.isPlaying();
     }
     

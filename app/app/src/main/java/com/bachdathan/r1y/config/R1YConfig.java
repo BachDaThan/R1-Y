@@ -309,6 +309,19 @@ public class R1YConfig {
         prefs.edit().putBoolean("try_opus", on).apply();
     }
 
+    /**
+     * Tự giải mã rồi đẩy PCM thẳng ra loa (AudioTrack) thay vì để MediaPlayer
+     * phát. Mặc định BẬT vì trên R1 MediaPlayer im với file MP4/AAC trong khi
+     * AudioTrack (tiếng bíp) vẫn kêu.
+     */
+    public boolean isDecodeAudio() {
+        return prefs.getBoolean("decode_audio", true);
+    }
+
+    public void setDecodeAudio(boolean on) {
+        prefs.edit().putBoolean("decode_audio", on).apply();
+    }
+
     public boolean isCacheAudio() {
         return prefs.getBoolean("cache_audio", true);
     }

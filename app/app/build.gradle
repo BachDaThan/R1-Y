@@ -10,8 +10,8 @@ android {
         applicationId "com.bachdathan.r1y"
         minSdkVersion 22
         targetSdkVersion 22
-        versionCode 36
-        versionName "1.9.2"
+        versionCode 37
+        versionName "1.9.3"
 
         multiDexEnabled true
 
