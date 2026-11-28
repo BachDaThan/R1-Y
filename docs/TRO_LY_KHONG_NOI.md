@@ -150,3 +150,35 @@ Hai lỗi:
 Bây giờ trang Trợ lý hiện đủ: đang hỏi URL nào, **HTTP mấy**, lỗi gì, và nguyên
 văn phần đầu câu trả lời của máy chủ. Gửi mình đúng mấy dòng đó là biết ngay
 nguyên nhân (hết hạn chứng chỉ, chặn mạng, hay máy chủ đổi API).
+
+## “OTA đã trả token mà app vẫn báo Kết nối: không” (sửa ở v1.9.2)
+
+Khi in câu trả lời OTA lên trang 8088, thấy rõ:
+
+```json
+{"server_time":…,
+ "websocket":{"url":"wss://api.tenclass.net/xiaozhi/v1/","token":"test-token"}}
+```
+
+HTTP **200** + có `websocket.token` nghĩa là **thiết bị đã được kích hoạt** cho
+đúng MAC đó, và máy chủ đã cấp token. Nhưng app cũ:
+
+1. **bỏ qua** token đó (`handleOTAResponse` chỉ lưu cờ “đã kích hoạt”);
+2. khi nối thì lấy `getValidAccessToken()`; nếu trống, `DeviceActivator` **tự sinh**
+   một “token” = `Base64(MAC:SN:thời_gian)` rồi gửi lên → máy chủ từ chối;
+3. `connect()` **không hề hỏi OTA** trước khi bắt tay.
+
+Từ v1.9.2, `connect()` hỏi OTA trước, dùng đúng `websocket.token` và
+`websocket.url` máy chủ trả về; chỉ khi OTA không cấp token mới dùng token dự phòng
+đã lưu; cuối cùng mới chuyển sang luồng kích hoạt. Có thêm nút **🔄 Kết nối lại AI**
+ở tab Trợ lý.
+
+> **Về câu hỏi “trên xiaozhi.me mình đã nhập mã OTA cho bản fw khác”:** máy chủ
+> gắn token theo **MAC thiết bị**, không theo tên firmware. Nếu bạn đã nhập mã cho
+> đúng MAC của loa này thì máy chủ coi là đã kích hoạt và cấp token — đó chính là
+> cái `websocket.token` trong ảnh. Vì vậy **không cần lấy mã lại**; chỉ cần app
+> dùng đúng token đó (đã sửa ở v1.9.2). Muốn kiểm tra: bấm **🔄 Kết nối lại AI**,
+> rồi xem dòng `Kênh:` — phải thành `OK`.
+
+> Ghi chú bảo mật: từ v1.9.2 trang 8088 **che** token/mật khẩu trong câu trả lời
+> OTA (`test-t***`). Trang này không có mật khẩu, ai vào được WiFi nhà cũng mở được.
