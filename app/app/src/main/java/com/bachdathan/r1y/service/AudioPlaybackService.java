@@ -275,7 +275,10 @@ public class AudioPlaybackService extends Service implements
             }
             playLocal(playable);
 
-        } catch (IOException e) {
+        } catch (Exception e) {
+            // playLocal() đã tự bắt lỗi MediaPlayer; đây chỉ còn lỗi hàng đợi âm
+            // thanh/Intent. Bắt rộng vì javac không cho catch IOException khi
+            // trong try không còn lời gọi nào ném IOException.
             Log.e(TAG, "Error playing from URL", e);
             if (callback != null) {
                 callback.onPlaybackError(e.getMessage());
