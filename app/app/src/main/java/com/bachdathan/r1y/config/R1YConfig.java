@@ -280,6 +280,21 @@ public class R1YConfig {
      * khai báo "format":"opus". Gửi PCM base64 thì máy chủ không hiểu, im lặng,
      * hoặc trả lỗi. Đây là lý do nút trên loa "không nói chuyện được với AI".
      */
+    /**
+     * Tải trọn bài về máy trước khi phát (mặc định BẬT).
+     *
+     * Lý do: Android 5.1 không gắn được User-Agent khi phát URL, CDN YouTube hay
+     * trả 403, và MediaPlayer báo "đang phát" rồi im. Tải trước còn giúp phát
+     * mượt trên R1 (CPU/ WiFi yếu) và lặp lại bài không phải tải lại.
+     */
+    public boolean isCacheAudio() {
+        return prefs.getBoolean("cache_audio", true);
+    }
+
+    public void setCacheAudio(boolean on) {
+        prefs.edit().putBoolean("cache_audio", on).apply();
+    }
+
     public boolean isAiUseOpus() {
         return prefs.getBoolean("ai_use_opus", true);
     }

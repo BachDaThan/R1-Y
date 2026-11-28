@@ -136,6 +136,95 @@ public final class UrlProbe {
         return o;
     }
 
+    /**
+     * Tải link về một file tạm và trả đường dẫn file đó (null nếu thất bại).
+     *
+     * Vì sao phải tải thay vì đưa URL thẳng cho MediaPlayer:
+     *  - API 22 không có setDataSource(String, Map) nên không gắn được
+     *    User-Agent/Referer — nhiều CDN YouTube trả 403 khi UA rỗng;
+     *  - khi CDN trả trang HTML (lỗi/quảng cáo chặn), MediaPlayer vẫn báo
+     *    "đang phát" rồi im lặng — tải về rồi kiểm tra thì biết ngay;
+     *  - tải trọn bài còn cho phép tiến trình phát/lặp lại ổn định trên R1.
+     */
+    public static String download(android.content.Context ctx, String url) {
+        HttpURLConnection c = null;
+        java.io.File out = null;
+        try {
+            com.bachdathan.r1y.config.R1YConfig cfg =
+                new com.bachdathan.r1y.config.R1YConfig(ctx);
+            if (!cfg.isCacheAudio()) {
+                return url;   // người dùng tắt "tải trước" -> đưa URL trực tiếp
+            }
+
+            c = (HttpURLConnection) new URL(url).openConnection();
+            c.setConnectTimeout(10000);
+            c.setReadTimeout(20000);
+            c.setInstanceFollowRedirects(true);
+            for (Map.Entry<String, String> e : headersFor(url).entrySet()) {
+                c.setRequestProperty(e.getKey(), e.getValue());
+            }
+            int code = c.getResponseCode();
+            if (code != 200 && code != 206) {
+                Log.w(TAG, "Tải link: HTTP " + code);
+                return null;
+            }
+            String ct = c.getContentType();
+            if (ct != null && ct.startsWith("text/")) {
+                Log.w(TAG, "Tải link: nhận về trang web (" + ct + ")");
+                return null;
+            }
+
+            byte[] magic = new byte[16];
+            out = java.io.File.createTempFile("r1y_", guessExt(url, ct), ctx.getCacheDir());
+
+            InputStream in = c.getInputStream();
+            java.io.FileOutputStream fos = new java.io.FileOutputStream(out);
+            byte[] buf = new byte[16 * 1024];
+            int n, total = 0, checked = 0;
+            while ((n = in.read(buf)) > 0) {
+                if (checked < 16) {
+                    int take = Math.min(16 - checked, n);
+                    System.arraycopy(buf, 0, magic, checked, take);
+                    checked += take;
+                }
+                fos.write(buf, 0, n);
+                total += n;
+                if (total > 60 * 1024 * 1024) {   // chặn file rác quá lớn
+                    Log.w(TAG, "File quá lớn, dừng tải");
+                    break;
+                }
+            }
+            fos.close();
+            in.close();
+
+            Log.i(TAG, "Đã tải " + total + " byte, magic=" + describeMagic(magic, 16));
+            return out.getAbsolutePath();
+        } catch (Throwable t) {
+            Log.w(TAG, "Tải link lỗi: " + t);
+            if (out != null) out.delete();
+            return null;
+        } finally {
+            if (c != null) c.disconnect();
+        }
+    }
+
+    private static String guessExt(String url, String ct) {
+        String u = url == null ? "" : url.toLowerCase(Locale.US);
+        if (u.contains("mime=audio%2fmp4") || u.contains("mime=audio/mp4")) return ".m4a";
+        if (u.contains("mime=audio%2fwebm") || u.contains("mime=audio/webm")) return ".webm";
+        if (u.contains(".m4a")) return ".m4a";
+        if (u.contains(".mp3")) return ".mp3";
+        if (u.contains(".webm")) return ".webm";
+        if (u.contains(".ogg") || u.contains(".opus")) return ".ogg";
+        if (ct != null) {
+            if (ct.contains("mp4")) return ".m4a";
+            if (ct.contains("webm")) return ".webm";
+            if (ct.contains("mpeg")) return ".mp3";
+            if (ct.contains("ogg")) return ".ogg";
+        }
+        return ".bin";
+    }
+
     /** Nhận dạng định dạng từ vài byte đầu (giống cách trình phát thật làm). */
     public static String describeMagic(byte[] d, int n) {
         if (d == null || n < 2) return "?";

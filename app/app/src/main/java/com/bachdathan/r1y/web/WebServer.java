@@ -510,6 +510,7 @@ public class WebServer extends NanoHTTPD {
             o.put("mic_gain", config.getMicGain());
             o.put("auto_wake", config.isAutoWakeEnabled());
             o.put("ai_use_opus", config.isAiUseOpus());
+            o.put("cache_audio", config.isCacheAudio());
             o.put("setup_mode", config.isSetupMode());
             o.put("home_wifi_ssid", config.getHomeWifiSsid());
         } catch (Exception ignored) {}
@@ -551,6 +552,7 @@ public class WebServer extends NanoHTTPD {
             if (o.has("mic_gain")) config.setMicGain(o.optInt("mic_gain", 12));
             if (o.has("auto_wake")) config.setAutoWakeEnabled(o.optBoolean("auto_wake", false));
             if (o.has("ai_use_opus")) config.setAiUseOpus(o.optBoolean("ai_use_opus", true));
+            if (o.has("cache_audio")) config.setCacheAudio(o.optBoolean("cache_audio", true));
             return json(200, "{\"ok\":true}");
         } catch (Exception e) {
             return json(400, "{\"ok\":false,\"error\":\"" + e.getMessage() + "\"}");
@@ -867,17 +869,18 @@ public class WebServer extends NanoHTTPD {
             // Kết luận: vì sao bấm nói mà AI không trả lời
             String verdict = "";
             String advice = "";
-            boolean conn = conn != null && conn.isConnected();
-            boolean open = conn != null && conn.protocolStatus().optBoolean("channelOpen");
+            boolean isConn = conn != null && conn.isConnected();
+            boolean isOpen = conn != null && conn.protocolStatus().optBoolean("channelOpen");
             int sent = com.bachdathan.r1y.service.VoiceRecognitionService.streamFrames;
             int recvBin = com.bachdathan.r1y.service.XiaozhiConnectionService.recvBinary;
             String lastType = com.bachdathan.r1y.service.XiaozhiConnectionService.lastJsonType;
-            if (!conn) {
+            if (conn == null) {
                 verdict = "App chưa có dịch vụ kết nối AI";
                 advice = "Mở lại app trên loa.";
-            } else if (!conn) {
-                verdict = "Chưa kết nối";
-            } else if (!open) {
+            } else if (!isConn) {
+                verdict = "Chưa kết nối máy chủ AI";
+                advice = "Kiểm tra WiFi và URL máy chủ; bấm 'Nói' để thử nối lại.";
+            } else if (!isOpen) {
                 verdict = "Đã nối WebSocket nhưng máy chủ CHƯA trả hello";
                 advice = "Sai URL/token/header. Kiểm tra URL 'wss://api.tenclass.net/xiaozhi/v1/', "
                        + "lấy lại mã kích hoạt ở tab Trợ lý.";

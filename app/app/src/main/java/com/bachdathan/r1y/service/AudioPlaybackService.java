@@ -250,13 +250,21 @@ public class AudioPlaybackService extends Service implements
             initMediaPlayer();
             // Gắn User-Agent/Referer: nhiều CDN YouTube trả 403 khi UA rỗng —
             // đây là một trong các nguyên nhân "báo đang phát mà im".
-            try {
-                mediaPlayer.setDataSource(url,
-                    com.bachdathan.r1y.util.UrlProbe.headersFor(url));
-            } catch (Throwable t) {
-                Log.w(TAG, "Không gắn được header, thử setDataSource thường: " + t);
-                mediaPlayer.setDataSource(url);
+            // API 22 KHÔNG có setDataSource(String, Map<String,String>) (chỉ từ API 23),
+            // nên tự tải về file tạm rồi phát từ file. Việc này còn chặn được
+            // trường hợp CDN trả 403/HTML mà MediaPlayer báo "đang phát mà im".
+            String playable = url;
+            if (url.startsWith("http://") || url.startsWith("https://")) {
+                playable = com.bachdathan.r1y.util.UrlProbe.download(this, url);
+                if (playable == null) {
+                    Log.e(TAG, "Không tải được link: " + url);
+                    lastError = "Tải link thất bại (xem mục Kiểm tra ở web)";
+                    if (callback != null) callback.onPlaybackError(lastError);
+                    onPlaybackCompleted();
+                    return;
+                }
             }
+            mediaPlayer.setDataSource(playable);
             prepareStartedAt = System.currentTimeMillis();
             mediaPlayer.prepareAsync();
             
