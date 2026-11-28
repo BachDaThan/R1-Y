@@ -137,3 +137,16 @@ hiện tượng “bấm nói mà AI không trả lời”. Từ v1.9.0 gửi đ
 | `Đã gửi N khung nhưng máy chủ KHÔNG trả gì` | Mic gần như im lặng → tăng độ nhạy mic |
 | `Máy chủ có trả lời (JSON: …) nhưng KHÔNG gửi khung tiếng` | Máy chủ trả định dạng khác Opus |
 | `Đã nhận N khung tiếng` | Đường truyền OK → kiểm tra đường ra/bíp |
+
+## “Bấm Lấy mã kích hoạt mà không thấy gì” (sửa ở v1.9.1)
+
+Hai lỗi:
+1. `OTAConfigManager` coi **mọi** mã HTTP khác 200 là lỗi. Nhưng theo đặc tả OTA
+   của Xiaozhi, **202/203 nghĩa là “thiết bị cần kích hoạt”** và body vẫn là JSON
+   hợp lệ (có `activation.code`). Vì thế mã kích hoạt không bao giờ hiện ra.
+2. Bấm “Lấy mã” lần thứ hai khi lần trước còn đang chạy thì app `return` im lặng
+   → trên web không có gì thay đổi.
+
+Bây giờ trang Trợ lý hiện đủ: đang hỏi URL nào, **HTTP mấy**, lỗi gì, và nguyên
+văn phần đầu câu trả lời của máy chủ. Gửi mình đúng mấy dòng đó là biết ngay
+nguyên nhân (hết hạn chứng chỉ, chặn mạng, hay máy chủ đổi API).
