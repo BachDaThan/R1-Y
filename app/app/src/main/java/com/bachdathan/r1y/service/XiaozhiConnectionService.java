@@ -92,6 +92,13 @@ public class XiaozhiConnectionService extends Service {
     public static volatile String lastListenState = "";
     public static volatile long lastTtsAt = 0;
     public static volatile int sentFrames = 0;
+    /** Loại tin JSON cuối cùng máy chủ gửi (rỗng = máy chủ chưa nói gì). */
+    public static volatile String lastJsonType = "";
+    public static volatile long lastJsonAt = 0;
+    /** Chuỗi loại tin gần đây, ví dụ "hello stt llm tts:sentence_start". */
+    public static volatile String lastTypes = "";
+    /** Số khung nhị phân đã nhận (0 = máy chủ không gửi tiếng nào). */
+    public static volatile int recvBinary = 0;
     
     public class LocalBinder extends Binder {
         public XiaozhiConnectionService getService() {
@@ -345,9 +352,17 @@ public class XiaozhiConnectionService extends Service {
             Log.i(TAG, "Token length: " + accessToken.length());
             Log.i(TAG, "============================");
             
-            // Create headers with Bearer token
+            // 4 header BẮT BUỘC của giao thức Xiaozhi (xiaozhi-esp32/docs/websocket.md):
+            //   Authorization: Bearer <token>, Protocol-Version: 1,
+            //   Device-Id: MAC, Client-Id: UUID ổn định
+            // Thiếu Protocol-Version/Device-Id/Client-Id thì máy chủ từ chối ngay
+            // ở bước bắt tay — đây là lý do "không kết nối được với AI".
             Map<String, String> headers = new HashMap<>();
             headers.put("Authorization", "Bearer " + accessToken);
+            headers.put("Protocol-Version", "1");
+            String mac = deviceFingerprint.getMacAddress();
+            if (mac != null && !mac.isEmpty()) headers.put("Device-Id", mac);
+            headers.put("Client-Id", new R1YConfig(this).getAiClientId());
             Log.i(TAG, "Headers: " + headers.toString());
             
             webSocketClient = new WebSocketClient(serverUri, headers) {
@@ -554,6 +569,17 @@ public class XiaozhiConnectionService extends Service {
 
             String type = json.optString("type");
             Log.d(TAG, "Nhận JSON type=" + type);
+            // Ghi lại loại tin gần nhất — để trả lời "AI có trả lời không?"
+            lastJsonType = type == null ? "" : type;
+            lastJsonAt = System.currentTimeMillis();
+            if ("hello".equals(type) || "tts".equals(type) || "stt".equals(type)
+                    || "llm".equals(type) || "mcp".equals(type)) {
+                lastTypes = (lastTypes + " " + type
+                    + ("tts".equals(type) ? ":" + json.optString("state") : "")).trim();
+                if (lastTypes.length() > 160) {
+                    lastTypes = lastTypes.substring(lastTypes.length() - 160);
+                }
+            }
 
             if ("hello".equals(type)) {
                 onServerHello(json);
@@ -597,6 +623,7 @@ public class XiaozhiConnectionService extends Service {
         if (data == null || data.length < 2) {
             return;
         }
+        recvBinary++;
         try {
             String kind = sniff(data);
             if (kind != null) {
@@ -804,6 +831,11 @@ public class XiaozhiConnectionService extends Service {
             o.put("recvOk", opusPlayer.framesOk);
             o.put("recvBad", opusPlayer.framesBad);
             o.put("recvStatus", opusPlayer.status());
+            o.put("recvBinary", recvBinary);
+            o.put("lastJsonType", lastJsonType);
+            o.put("lastTypes", lastTypes);
+            o.put("lastJsonAgoMs", lastJsonAt == 0 ? -1
+                    : System.currentTimeMillis() - lastJsonAt);
             o.put("useOpus", new R1YConfig(this).isAiUseOpus());
             o.put("url", new R1YConfig(this).getAiUrl());
             o.put("lastTtsAgoMs", lastTtsAt == 0 ? -1

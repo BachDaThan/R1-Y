@@ -155,7 +155,10 @@ public class R1YConfig {
     /** Preset máy chủ AI. id -> tên hiển thị + URL mặc định. */
     public static final String[][] AI_PRESETS = {
         // id,                 tên hiển thị,                    URL mặc định
-        {"xiaozhi",            "Xiaozhi.me (chính thức)",        "wss://xiaozhi.me/v1/ws"},
+        // Máy chủ chính thức của Xiaozhi là api.tenclass.net — KHÔNG phải xiaozhi.me.
+        // URL này nhận được từ OTA (https://api.tenclass.net/xiaozhi/ota/), và
+        // kèm 4 header bắt buộc: Authorization, Protocol-Version, Device-Id, Client-Id.
+        {"xiaozhi",            "Xiaozhi chính thức (tenclass)",    "wss://api.tenclass.net/xiaozhi/v1/"},
         {"xiaozhi_self",       "Xiaozhi tự dựng (esp32-server)", "ws://192.168.1.100:8000/xiaozhi/v1/"},
         {"custom",             "Tùy chỉnh (URL của bạn)",        ""},
     };
@@ -167,7 +170,7 @@ public class R1YConfig {
 
     public static String aiPresetUrl(String id) {
         for (String[] p : AI_PRESETS) if (p[0].equals(id)) return p[2];
-        return "wss://xiaozhi.me/v1/ws";
+        return "wss://api.tenclass.net/xiaozhi/v1/";
     }
 
     /** Id preset đang dùng: xiaozhi (mặc định) | xiaozhi_self | custom. */
@@ -277,8 +280,36 @@ public class R1YConfig {
      * khai báo "format":"opus". Gửi PCM base64 thì máy chủ không hiểu, im lặng,
      * hoặc trả lỗi. Đây là lý do nút trên loa "không nói chuyện được với AI".
      */
+    /**
+     * Tải trọn bài về máy trước khi phát (mặc định BẬT).
+     *
+     * Lý do: Android 5.1 không gắn được User-Agent khi phát URL, CDN YouTube hay
+     * trả 403, và MediaPlayer báo "đang phát" rồi im. Tải trước còn giúp phát
+     * mượt trên R1 (CPU/ WiFi yếu) và lặp lại bài không phải tải lại.
+     */
+    public boolean isCacheAudio() {
+        return prefs.getBoolean("cache_audio", true);
+    }
+
+    public void setCacheAudio(boolean on) {
+        prefs.edit().putBoolean("cache_audio", on).apply();
+    }
+
     public boolean isAiUseOpus() {
         return prefs.getBoolean("ai_use_opus", true);
+    }
+
+    /**
+     * Client-Id: UUID ổn định của phần mềm, gửi trong header khi bắt tay.
+     * Đặc tả Xiaozhi yêu cầu; đổi giá trị này không ảnh hưởng quyền kích hoạt.
+     */
+    public String getAiClientId() {
+        String id = prefs.getString("ai_client_id", null);
+        if (id == null || id.length() < 8) {
+            id = java.util.UUID.randomUUID().toString();
+            prefs.edit().putString("ai_client_id", id).apply();
+        }
+        return id;
     }
 
     public void setAiUseOpus(boolean opus) {

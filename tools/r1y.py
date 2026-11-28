@@ -1526,7 +1526,7 @@ def has_internet(timeout=4):
 
 
 TOOL_URL = "https://raw.githubusercontent.com/%s/main/tools/r1y.py" % REPO
-TOOL_VERSION = "1.8.0"
+TOOL_VERSION = "1.9.0"
 
 
 def tool_is_outdated():
@@ -2074,6 +2074,63 @@ def flow_audio(args):
                     warn("Không phát được: %s" % r.get("error"))
             except Exception as e:
                 warn("Lỗi thử phát: %s" % e)
+
+
+def flow_why_silent(args):
+    """
+    "Web báo đang phát mà loa im" — soi từng tầng và nói rõ hỏng ở đâu (v1.9.0).
+
+    Tách được 3 tầng:
+      A. link/nguồn   (HTTP 403? trang HTML? WebM?)
+      B. giải mã      (MediaPlayer lỗi what/extra? position có nhích?)
+      C. đường ra     (âm lượng + stream; bíp kêu được hay không)
+    """
+    banner()
+    ip = args.ip or scan_for_loa_ip() or ask("IP loa", "")
+    if not ip:
+        die("Chưa có IP loa. Ví dụ: python3 tools/r1y.py silent --ip 192.168.2.20")
+    base = "http://%s:%d" % (ip, WEB_PORT)
+    title("Vì sao loa im — loa %s" % ip)
+
+    j = http_json(base + "/api/audio/playing", timeout=15)
+    info("Kết luận: %s" % (j.get("verdict") or "?"))
+    if j.get("advice"):
+        info("Nên làm: %s" % j["advice"])
+    info("Đường ra: %s | vị trí: %s ms" % (j.get("route"), j.get("positionMs")))
+    if j.get("title"):
+        info("Bài: %s" % j["title"])
+    if j.get("lastError"):
+        warn("MediaPlayer: %s" % j["lastError"])
+
+    url = None
+    try:
+        pl = http_json(base + "/api/player", timeout=15)
+        url = pl.get("url")
+        if pl.get("lastError") and not j.get("lastError"):
+            warn("MediaPlayer: %s" % pl["lastError"])
+    except Exception:
+        pass
+
+    if url:
+        print()
+        info("Đang kiểm tra link…")
+        try:
+            pr = http_json(base + "/api/audio/probe?url=" + urllib.parse.quote(url, safe=""),
+                           timeout=25)
+            info("HTTP %s | %s | %s" % (pr.get("status"), pr.get("contentType"),
+                                        pr.get("magic")))
+            info("Kết luận link: %s" % pr.get("verdict"))
+            if pr.get("advice"):
+                info("Nên làm: %s" % pr["advice"])
+        except Exception as e:
+            warn("Không kiểm tra được link: %s" % e)
+    else:
+        info("Chưa có bài nào đang phát -> bật một bài trước rồi chạy lại.")
+
+    print()
+    info("Bước cuối: bấm 'Phát thử tiếng bíp' trên web (tab Nhạc).")
+    info("Bíp KÊU  -> lỗi ở codec/link (xem kết luận link ở trên).")
+    info("Bíp IM   -> lỗi ở âm lượng/đường ra; thử đổi 'Đường ra' rồi phát lại.")
 
 
 def flow_voice(args):
@@ -2630,6 +2687,7 @@ def _menu_once():
         ("5b", "Chẩn đoán âm thanh — loa không ra tiếng / trợ lý không nói"),
         ("5c", "Điều khiển nhạc — tạm dừng / phát tiếp / ngưng / lặp lại"),
         ("5d", "Trợ lý AI — nói chuyện, soi giao thức, dò mã phím nút trên loa"),
+        ("5e", "Vì sao loa im — soi link / giải mã / đường ra"),
         ("6", "Cấu hình WiFi nhà cho loa (quét + nối)"),
         ("7", "Bật phát WiFi (hotspot) từ loa để điện thoại kết nối"),
         ("8", "Gỡ cài đặt / khôi phục app gốc"),
@@ -2648,6 +2706,10 @@ def _menu_once():
 
     if choice == "5d":
         flow_voice(argparse.Namespace(ip=None, action=None, text=None, code=None))
+        return
+
+    if choice == "5e":
+        flow_why_silent(argparse.Namespace(ip=None))
         return
 
     if choice == "5b":
@@ -2706,7 +2768,7 @@ def main():
     ap.add_argument("command", nargs="?", default="menu",
                     choices=["install", "update", "status", "config", "uninstall",
                              "hotspot", "wifi", "webinstall", "adbwifi", "audio",
-                             "player", "voice", "menu"],
+                             "player", "voice", "silent", "menu"],
                     help="Việc cần làm (bỏ trống = mở menu)")
     ap.add_argument("--ip", help="IP loa trong WiFi, ví dụ 192.168.2.20")
     ap.add_argument("--apk", help="Dùng file APK chỉ định thay vì tải GitHub")
@@ -2781,6 +2843,8 @@ def main():
             flow_webinstall(args)
         elif cmd == "audio":
             flow_audio(args)
+        elif cmd == "silent":
+            flow_why_silent(argparse.Namespace(ip=getattr(args, "ip", None)))
         elif cmd == "voice":
             flow_voice(argparse.Namespace(
                 ip=getattr(args, "ip", None), action=getattr(args, "action", None),

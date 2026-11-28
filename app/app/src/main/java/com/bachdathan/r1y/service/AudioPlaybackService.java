@@ -56,6 +56,18 @@ public class AudioPlaybackService extends Service implements
     private final Set<String> triedSources = new LinkedHashSet<String>();
     private boolean retrying = false;
 
+    // ===== Chẩn đoán tiến trình phát (hiện trên trang 8088) =====
+    /** Lần cuối chuyển sang trạng thái "đã chuẩn bị xong" (0 = chưa). */
+    public static volatile long lastPreparedAt = 0;
+    /** Số byte AudioTrack/MediaPlayer báo đã phát ở lần kiểm tra gần nhất. */
+    public static volatile int lastPositionMs = 0;
+    /** Lỗi gần nhất của MediaPlayer (what/extra) — rỗng = không có. */
+    public static volatile String lastError = "";
+    /** Đang chờ prepareAsync (ms) — nếu quá lâu là link treo. */
+    private volatile long prepareStartedAt = 0;
+    /** Kết quả kiểm tra link gần nhất (UrlProbe). */
+    public static volatile String lastProbe = "";
+
     /** Lặp lại bài đang phát (như YouTube "lặp 1 bài"). */
     public static volatile boolean repeatOne = false;
     /** Đang tạm dừng (người dùng bấm Tạm dừng). */
@@ -71,6 +83,18 @@ public class AudioPlaybackService extends Service implements
 
     public static String getNowPlayingTitle() {
         return nowPlayingTitle;
+    }
+
+    public static String getNowPlayingUrl() {
+        return nowPlayingUrl;
+    }
+
+    /** Vị trí phát hiện tại (ms). -1 nếu chưa có bộ phát. */
+    public int getPositionMs() {
+        try {
+            if (mediaPlayer != null && isPrepared) return mediaPlayer.getCurrentPosition();
+        } catch (Throwable ignored) {}
+        return -1;
     }
 
     /** Thang chất lượng hiện tại (Opus -> AAC -> video -> ...) để tự hạ bậc khi lỗi. */
@@ -224,7 +248,24 @@ public class AudioPlaybackService extends Service implements
             }
             
             initMediaPlayer();
-            mediaPlayer.setDataSource(url);
+            // Gắn User-Agent/Referer: nhiều CDN YouTube trả 403 khi UA rỗng —
+            // đây là một trong các nguyên nhân "báo đang phát mà im".
+            // API 22 KHÔNG có setDataSource(String, Map<String,String>) (chỉ từ API 23),
+            // nên tự tải về file tạm rồi phát từ file. Việc này còn chặn được
+            // trường hợp CDN trả 403/HTML mà MediaPlayer báo "đang phát mà im".
+            String playable = url;
+            if (url.startsWith("http://") || url.startsWith("https://")) {
+                playable = com.bachdathan.r1y.util.UrlProbe.download(this, url);
+                if (playable == null) {
+                    Log.e(TAG, "Không tải được link: " + url);
+                    lastError = "Tải link thất bại (xem mục Kiểm tra ở web)";
+                    if (callback != null) callback.onPlaybackError(lastError);
+                    onPlaybackCompleted();
+                    return;
+                }
+            }
+            mediaPlayer.setDataSource(playable);
+            prepareStartedAt = System.currentTimeMillis();
             mediaPlayer.prepareAsync();
             
         } catch (IOException e) {
@@ -334,6 +375,8 @@ public class AudioPlaybackService extends Service implements
         } catch (Throwable ignored) {
         }
         mp.start();
+        lastPreparedAt = System.currentTimeMillis();
+        lastError = "";
         Log.d(TAG, "Playback started");
         
         if (callback != null) {
@@ -356,6 +399,11 @@ public class AudioPlaybackService extends Service implements
     @Override
     public boolean onError(MediaPlayer mp, int what, int extra) {
         Log.e(TAG, "MediaPlayer error: what=" + what + ", extra=" + extra);
+        lastError = "what=" + what + " extra=" + extra
+            + (what == 1 ? " (MEDIA_ERROR_UNKNOWN — thường là codec/định dạng)" : "")
+            + (extra == -1004 ? " (IO — link chết/403)" : "")
+            + (extra == -110 ? " (timeout)" : "")
+            + (extra == -2147483648 ? " (lỗi hệ thống)" : "");
 
         // 1) Còn bậc thấp hơn trong cùng máy chủ -> tự hạ chất lượng (Opus -> AAC -> video)
         if (!retrying && ladderIndex + 1 < ladder.size()) {

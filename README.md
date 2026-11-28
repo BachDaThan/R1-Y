@@ -108,6 +108,13 @@ python3 tools/r1y.py install --ip 192.168.43.1
 
 Giữ lại cài đặt khi gỡ (nếu ROM cho phép): `pm uninstall -k com.bachdathan.r1y`.
 
+## Web báo “đang phát” mà loa im?
+
+Bấm **🔍 Kiểm tra vì sao im** ở tab **Nhạc** (hoặc `python3 tools/r1y.py silent --ip IP_LOA`).
+Trang sẽ tách bạch ba tầng — link/nguồn, giải mã, đường ra — và nói thẳng hỏng ở đâu
+(HTTP 403, nhận về trang HTML, WebM không giải mã được, vị trí phát đứng ở 0…).
+Chi tiết: `docs/BAO_DANG_PHAT_MA_IM.md`.
+
 ## Bấm nút trên loa để nói chuyện với trợ lý AI
 
 Từ **v1.8.0**, nút trên loa hoạt động: bấm một lần là nói, bấm lần nữa là thôi

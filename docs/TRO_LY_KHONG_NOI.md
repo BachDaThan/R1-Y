@@ -111,3 +111,29 @@ python3 tools/r1y.py voice --ip 192.168.2.20 --action text --text "xin chào"
 ```
 Nếu cách này mà loa **nói được**, thì micro/mã phím là phần còn sai.
 Nếu vẫn im → xem mục `docs/LOA_KHONG_RA_TIENG.md` (đường ra âm thanh).
+
+## Máy chủ chính thức: `wss://api.tenclass.net/xiaozhi/v1/`
+
+Đây là điểm sai đã sửa ở v1.9.0. Máy chủ thật của Xiaozhi **không phải**
+`wss://xiaozhi.me/v1/ws` (đó là API web, không nhận WebSocket thiết bị).
+Thiết bị lấy cấu hình từ OTA `https://api.tenclass.net/xiaozhi/ota/`, và bắt tay
+bằng **4 header bắt buộc**:
+
+```
+Authorization: Bearer <token>
+Protocol-Version: 1
+Device-Id: <MAC của loa>
+Client-Id: <UUID ổn định>
+```
+
+App cũ chỉ gửi `Authorization` → máy chủ đóng kết nối ngay ở bước bắt tay, đúng
+hiện tượng “bấm nói mà AI không trả lời”. Từ v1.9.0 gửi đủ cả bốn.
+
+### Đọc bảng kết luận ở tab Trợ lý
+| Kết luận trên web | Nghĩa |
+|---|---|
+| `Đã nối WebSocket nhưng máy chủ CHƯA trả hello` | Sai URL/token/header |
+| `Kênh OK — chưa gửi khung micro nào` | Chưa bấm **Nói** |
+| `Đã gửi N khung nhưng máy chủ KHÔNG trả gì` | Mic gần như im lặng → tăng độ nhạy mic |
+| `Máy chủ có trả lời (JSON: …) nhưng KHÔNG gửi khung tiếng` | Máy chủ trả định dạng khác Opus |
+| `Đã nhận N khung tiếng` | Đường truyền OK → kiểm tra đường ra/bíp |

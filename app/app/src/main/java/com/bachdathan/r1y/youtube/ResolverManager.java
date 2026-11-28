@@ -308,6 +308,32 @@ public class ResolverManager {
         return out;
     }
 
+    /**
+     * Dò sẵn danh sách máy chủ khi app vừa khởi động (chạy nền).
+     *
+     * Trước đây danh sách chỉ được dò ở lần TÌM NHẠC đầu tiên, nên người dùng
+     * phải bấm "Tải lại" + "Lưu" bằng tay mới phát được. Giờ app tự dò ngay khi
+     * bật, và làm mới khi danh sách cũ đã quá hạn — không cần bấm gì.
+     */
+    public void warmUpAsync() {
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    int n = resolveAll().size();
+                    Log.i(TAG, "Dò sẵn xong: " + n + " máy chủ");
+                } catch (Throwable t) {
+                    Log.w(TAG, "Dò sẵn lỗi: " + t);
+                }
+            }
+        }, "r1y-discovery").start();
+    }
+
+    /** Danh sách máy chủ đang dùng (dò lại nếu quá hạn). */
+    public List<Resolver> resolveAll() {
+        return publicResolvers();
+    }
+
     /** Dò máy chủ Piped đang sống (danh sách chính thức, lỗi thì dùng danh sách dự phòng). */
     public List<String> discoverPiped() {
         Set<String> cands = new LinkedHashSet<String>();

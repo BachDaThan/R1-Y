@@ -12,7 +12,7 @@ public class XiaozhiConfig {
     // ✅ FIXED: Using secure WebSocket (wss://) with SSL trust manager
     // Upgraded to Java-WebSocket 1.5.3 which supports SSL customization
     // SSL certificate validation bypassed for expired certificates
-    public static final String WEBSOCKET_URL = "wss://xiaozhi.me/v1/ws";
+    public static final String WEBSOCKET_URL = "wss://api.tenclass.net/xiaozhi/v1/";
     public static final String CLIENT_ID = "1000013";
 
     // SSL bypass flag - enabled to handle expired certificates
@@ -30,7 +30,7 @@ public class XiaozhiConfig {
     
     // Default values
     // ✅ Using wss:// with SSL trust manager
-    public static final String DEFAULT_CLOUD_URL = "wss://xiaozhi.me/v1/ws";
+    public static final String DEFAULT_CLOUD_URL = "wss://api.tenclass.net/xiaozhi/v1/";
     public static final String DEFAULT_SELF_HOSTED_URL = "ws://192.168.1.100:8080/websocket";
     public static final String DEFAULT_WAKE_WORD = "小智";
     public static final int DEFAULT_HTTP_PORT = 8088;
