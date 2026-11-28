@@ -118,6 +118,22 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
+        // Dò sẵn danh sách máy chủ YouTube ngay khi mở app — để lần tìm nhạc
+        // đầu tiên không phải bấm "Tải lại/Lưu" bằng tay (v1.9.0).
+        try {
+            new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        new com.bachdathan.r1y.youtube.ResolverManager(
+                            new com.bachdathan.r1y.config.R1YConfig(
+                                com.bachdathan.r1y.ui.MainActivity.this)
+                        ).warmUpAsync();
+                    } catch (Throwable ignored) {}
+                }
+            }, "r1y-warmup").start();
+        } catch (Throwable ignored) {}
+
         // Initialize views - API 22 requires explicit cast
         initializeViews();
 

@@ -130,6 +130,11 @@ public class WebServer extends NanoHTTPD {
                 return handlePlayer(session, method);
             } else if ("/api/audio/test".equals(path)) {
                 return handleAudioTest(session);
+            } else if ("/api/audio/probe".equals(path)) {
+                return json(200, com.bachdathan.r1y.util.UrlProbe.probe(
+                        param(session, "url")).toString());
+            } else if ("/api/audio/playing".equals(path)) {
+                return handlePlayingDiag();
             } else if ("/api/audio/status".equals(path)) {
                 return json(200, com.bachdathan.r1y.util.AudioDiag.status(context).toString());
             } else if ("/api/voice".equals(path)) {
@@ -735,6 +740,8 @@ public class WebServer extends NanoHTTPD {
             o.put("paused", com.bachdathan.r1y.service.AudioPlaybackService.paused);
             o.put("repeat", com.bachdathan.r1y.service.AudioPlaybackService.repeatOne);
             o.put("title", com.bachdathan.r1y.service.AudioPlaybackService.getNowPlayingTitle());
+            o.put("url", com.bachdathan.r1y.service.AudioPlaybackService.getNowPlayingUrl());
+            o.put("lastError", com.bachdathan.r1y.service.AudioPlaybackService.lastError);
             o.put("volume", com.bachdathan.r1y.util.AudioDiag.status(context).optInt("volume", -1));
         } catch (Exception e) {
             try { o.put("ok", false); o.put("error", String.valueOf(e.getMessage())); } catch (Exception ignored) {}
@@ -856,6 +863,41 @@ public class WebServer extends NanoHTTPD {
             out.put("lastKeyName",
                 com.bachdathan.r1y.util.VoiceTrigger.lastKeyName);
             out.put("micGain", new R1YConfig(context).getMicGain());
+
+            // Kết luận: vì sao bấm nói mà AI không trả lời
+            String verdict = "";
+            String advice = "";
+            boolean conn = conn != null && conn.isConnected();
+            boolean open = conn != null && conn.protocolStatus().optBoolean("channelOpen");
+            int sent = com.bachdathan.r1y.service.VoiceRecognitionService.streamFrames;
+            int recvBin = com.bachdathan.r1y.service.XiaozhiConnectionService.recvBinary;
+            String lastType = com.bachdathan.r1y.service.XiaozhiConnectionService.lastJsonType;
+            if (!conn) {
+                verdict = "App chưa có dịch vụ kết nối AI";
+                advice = "Mở lại app trên loa.";
+            } else if (!conn) {
+                verdict = "Chưa kết nối";
+            } else if (!open) {
+                verdict = "Đã nối WebSocket nhưng máy chủ CHƯA trả hello";
+                advice = "Sai URL/token/header. Kiểm tra URL 'wss://api.tenclass.net/xiaozhi/v1/', "
+                       + "lấy lại mã kích hoạt ở tab Trợ lý.";
+            } else if (sent == 0) {
+                verdict = "Kênh OK — chưa gửi khung micro nào";
+                advice = "Bấm 'Nói' (hoặc nút trên loa) rồi nói.";
+            } else if (recvBin == 0 && "".equals(lastType)) {
+                verdict = "Đã gửi " + sent + " khung nhưng máy chủ KHÔNG trả gì";
+                advice = "Mic gần như im lặng (tăng 'Độ nhạy mic' ở tab Thêm) hoặc "
+                       + "chưa bấm 'Nói' đủ lâu.";
+            } else if (recvBin == 0) {
+                verdict = "Máy chủ có trả lời (JSON: " + lastType + ") nhưng KHÔNG gửi khung tiếng";
+                advice = "Máy chủ đang trả bằng định dạng khác Opus (vd JSON base64). "
+                       + "Bỏ chọn 'Gửi PCM' nếu đã bật, hoặc dùng máy chủ esp32-server.";
+            } else {
+                verdict = "Đã nhận " + recvBin + " khung tiếng — kiểm tra đường ra nếu vẫn im";
+                advice = "Bấm 'Thử loa (bíp)'. Bíp kêu = codec/đường ra; bíp im = âm lượng.";
+            }
+            out.put("verdict", verdict);
+            if (!advice.isEmpty()) out.put("advice", advice);
         } catch (Throwable t) {
             try {
                 out.put("ok", false);
@@ -863,6 +905,70 @@ public class WebServer extends NanoHTTPD {
             } catch (Throwable ignored) {}
         }
         return json(200, out.toString());
+    }
+
+    /**
+     * "Báo đang phát mà im" — quyết định xem lỗi nằm ở đâu bằng một câu trả lời.
+     *
+     * Ba tầng có thể hỏng, tách bạch được:
+     *   A. link/nguồn   -> MediaPlayer lỗi (lastError, lastProbe)
+     *   B. giải mã      -> prepare xong nhưng position không nhích
+     *   C. đường ra/c.h   -> position nhích mà vẫn không nghe (thử bíp)
+     */
+    private Response handlePlayingDiag() {
+        org.json.JSONObject o = new org.json.JSONObject();
+        try {
+            com.bachdathan.r1y.service.AudioPlaybackService a =
+                com.bachdathan.r1y.core.XiaozhiCore.getInstance().getAudioService();
+            long preparedAt = com.bachdathan.r1y.service.AudioPlaybackService.lastPreparedAt;
+            String err = com.bachdathan.r1y.service.AudioPlaybackService.lastError;
+            boolean playing = a != null && a.isPlayingNow();
+            boolean paused = a != null && a.isPaused();
+            String title = a == null ? "" : a.getNowPlayingTitle();
+            String url = a == null ? "" : a.getNowPlayingUrl();
+
+            int pos = -1;
+            try {
+                if (a != null) pos = a.getPositionMs();
+            } catch (Throwable ignored) {}
+
+            o.put("playing", playing);
+            o.put("paused", paused);
+            o.put("title", title == null ? "" : title);
+            o.put("positionMs", pos);
+            o.put("preparedAgeMs", preparedAt == 0 ? -1
+                    : System.currentTimeMillis() - preparedAt);
+            o.put("lastError", err == null ? "" : err);
+            o.put("lastProbe", com.bachdathan.r1y.service.AudioPlaybackService.lastProbe);
+            o.put("route", com.bachdathan.r1y.util.AudioDiag.streamName(context));
+
+            String verdict;
+            String advice = "";
+            if (playing && pos >= 0 && pos == 0 && preparedAt > 0) {
+                verdict = "Đã chuẩn bị xong nhưng bộ phát chưa chạy được khung nào";
+                advice = "Kiểm tra link (nút bên dưới) và thử chất lượng 'Tương thích'.";
+            } else if (playing && pos > 0) {
+                verdict = "Đang chạy tới " + (pos / 1000) + " giây";
+                advice = "Nếu tai không nghe gì: bấm 'Phát thử tiếng bíp'. Bíp kêu = "
+                       + "đường ra OK, lỗi ở codec; bíp im = đường ra/âm lượng.";
+            } else if (!err.isEmpty()) {
+                verdict = "Link/nguồn lỗi: " + err;
+                advice = "Đổi bài khác hoặc 'Tải lại' danh sách máy chủ rồi Lưu.";
+            } else if ("".equals(url) || url == null) {
+                verdict = "Chưa có bài nào được phát";
+                advice = "";
+            } else {
+                verdict = "Chưa phát (đang tạm dừng hoặc chờ link)";
+                advice = "Nếu treo ở 'đang tải': link chậm/chết. Bấm Ngưng rồi phát lại.";
+            }
+            o.put("verdict", verdict);
+            if (!advice.isEmpty()) o.put("advice", advice);
+        } catch (Throwable t) {
+            try {
+                o.put("verdict", "Lỗi đọc trạng thái: " + t);
+            } catch (Exception ignored) {}
+        }
+        return json(200, o.toString());
     }
 
     private Response handleAssistant(boolean start) {
@@ -930,7 +1036,8 @@ public class WebServer extends NanoHTTPD {
 
     private static final String PAGE =
         "<!DOCTYPE html><html lang=\"vi\"><head><meta charset=\"utf-8\">"
-        + "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
+        + "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover\">"
+        + "<meta name=\"theme-color\" content=\"#0f1115\">"
         + "<title>R1-Y</title><style>"
         + "body{margin:0;background:#0f1115;color:#e8eaf0;font-family:system-ui,sans-serif}"
         + ".top{display:flex;align-items:center;gap:10px;padding:14px 16px}"
@@ -938,12 +1045,26 @@ public class WebServer extends NanoHTTPD {
         + ".name{font-size:20px;font-weight:700}.sub{font-size:12px;color:#9aa3b2}"
         + ".ready{margin-left:auto;background:#0f2e1d;color:#4ade80;padding:6px 12px;border-radius:20px;font-size:13px}"
         + ".card{margin:10px 14px;background:#171a21;border:1px solid #232733;border-radius:14px;padding:16px}"
+        // --- Mobile-first (v1.9.0): hiển thị đúng trên điện thoại, không tràn ngang ---
+        + "*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}"
+        + "html,body{width:100%;max-width:100%;overflow-x:hidden;-webkit-text-size-adjust:100%}"
+        + "body{padding-bottom:env(safe-area-inset-bottom)}"
+        // input/select phải >=16px, nếu không iOS tự zoom trang khi bấm vào
+        + "input,select,textarea,button{font-size:16px;font-family:inherit;max-width:100%}"
+        + "button,.btn{min-height:46px;touch-action:manipulation}"
+        + ".card{margin:10px 12px}"
+        + "@media (min-width:760px){.card{max-width:720px;margin-left:auto;margin-right:auto}}"
+        + "@media (max-width:360px){.card{margin:8px 6px;padding:12px}.btn{font-size:15px}}"
+        + "table{width:100%;border-collapse:collapse}"
+        + "pre,code{white-space:pre-wrap;word-break:break-word}"
+        + "img,video,canvas{max-width:100%;height:auto}"
         + ".btn{display:block;width:100%;padding:14px;border:none;border-radius:10px;font-size:16px;margin:8px 0;cursor:pointer}"
         + ".primary{background:#5b5bd6;color:#fff}.danger{background:#1d212b;color:#f87171;border:1px solid #2a2f3a}"
-        + ".row{display:flex;gap:10px}.row .btn{flex:1}"
+        + ".row{display:flex;gap:10px;flex-wrap:wrap}.row .btn{flex:1 1 44%;min-width:130px}"
         + "textarea{width:100%;min-height:140px;background:#0b0d11;color:#e8eaf0;border:1px solid #2a2f3a;border-radius:10px;padding:10px;box-sizing:border-box;font-family:monospace}"
         + "code{background:#232733;padding:2px 6px;border-radius:6px;font-size:12px}"
-        + ".nav{position:fixed;bottom:0;left:0;right:0;background:#14161c;display:flex;border-top:1px solid #232733}"
+        + ".nav{position:fixed;bottom:0;left:0;right:0;background:#14161c;display:flex;border-top:1px solid #232733;padding-bottom:env(safe-area-inset-bottom);z-index:50}"
+        + "main,body>div{padding-bottom:76px}"
         + ".nav button{flex:1;background:none;border:none;color:#9aa3b2;padding:10px 0 14px;font-size:12px;cursor:pointer}"
         + ".nav button.on{color:#8b8bff}.nav .ic{font-size:20px;display:block}"
         + ".msg{font-size:13px;color:#9aa3b2;min-height:18px}"
@@ -952,7 +1073,7 @@ public class WebServer extends NanoHTTPD {
         + ".wifi.sel{border-color:#5b5bd6;background:#1b1e2b}.wifi .nm{flex:1}.wifi .lk{font-size:12px;color:#9aa3b2}"
         + "</style></head><body>"
         + "<div class=\"top\"><div class=\"logo\">&#9635;</div>"
-        + "<div><div class=\"name\">R1-Y</div><div class=\"sub\" id=\"sub\">... &middot; v1.8.0</div></div>"
+        + "<div><div class=\"name\">R1-Y</div><div class=\"sub\" id=\"sub\">... &middot; v1.9.0</div></div>"
         + "<div class=\"ready\">&#9679; S&#7841;n s&#224;ng</div></div>"
         + "<div class=\"card\" id=\"card-setup\">"
         + "<h3>&#128225; C&#224;i &#273;&#7863;t WiFi cho loa</h3>"
@@ -989,6 +1110,8 @@ public class WebServer extends NanoHTTPD {
         + "<button class=\"btn danger\" onclick=\"sndVol()\">B&#7853;t &#226;m l&#432;&#7907;ng</button></div>"
         + "<div class=\"msg\" id=\"sndInfo\"></div>"
         + "<div class=\"msg\" id=\"codecInfo\"></div>"
+        + "<button class=\"btn\" onclick=\"diagPlaying()\">&#128269; Ki&#7875;m tra v&#236; sao im (b&#225;o &#273;ang ph&#225;t m&#224; kh&#244;ng ra ti&#7871;ng)</button>"
+        + "<div class=\"msg\" id=\"diagBox\"></div>"
         + "<h3 style=\"margin-top:18px\">&#9881; Ch&#7845;t l&#432;&#7907;ng &#226;m thanh</h3>"
         + "<select id=\"audioQ\" onchange=\"saveAudioQ()\" style=\"width:100%;padding:12px;border-radius:10px;border:1px solid #2a2f3a;background:#0b0d11;color:#e8eaf0\">"
         + "<option value=\"high\">Cao nh&#7845;t (Opus, nghe hay nh&#7845;t)</option>"
@@ -1082,6 +1205,21 @@ public class WebServer extends NanoHTTPD {
         + "async function startAct(){var b=document.getElementById('actBox');b.textContent='\\u0110ang l\\u1ea5y m\\u00e3...';try{await fetch('/api/assistant',{method:'POST'});}catch(e){}setTimeout(loadAct,3000);}"
         + "setInterval(function(){if(document.getElementById('tab-troly').style.display!=='none'){loadAct();}},5000);"
         + "setInterval(function(){var a=document.getElementById('nowBox');if(a){plState();}},5000);"
+        + "async function diagPlaying(){var b=document.getElementById('diagBox');if(!b){return;}"
+        + "b.textContent='\\u0110ang ki\\u1ec3m tra...';"
+        + "var t='';try{var r=await fetch('/api/audio/playing');var j=await r.json();"
+        + "t='K\\u1ebft lu\\u1eadn: '+(j.verdict||'?')+'\\n';"
+        + "if(j.advice){t+='N\\u00ean l\\u00e0m: '+j.advice+'\\n';}"
+        + "t+='\\u0110\\u01b0\\u1eddng ra: '+(j.route||'?')+' | v\\u1ecb tr\\u00ed: '+j.positionMs+'ms';"
+        + "if(j.lastError){t+='\\nL\\u1ed7i MediaPlayer: '+j.lastError;}"
+        + "var u=null;try{var r2=await fetch('/api/player');var j2=await r2.json();u=j2.url;}catch(e){}"
+        + "if(u){t+='\\n\\n\\u0110ang ki\\u1ec3m tra link...';b.style.whiteSpace='pre-wrap';b.textContent=t;"
+        + "try{var r3=await fetch('/api/audio/probe?url='+encodeURIComponent(u));var j3=await r3.json();"
+        + "t+='\\nLink: HTTP '+j3.status+' | '+(j3.contentType||'?')+' | '+(j3.magic||'?');"
+        + "t+='\\n-> '+(j3.verdict||'?');if(j3.advice){t+='\\nN\\u00ean l\\u00e0m: '+j3.advice;}"
+        + "}catch(e){t+='\\nKh\\u00f4ng ki\\u1ec3m tra \\u0111\\u01b0\\u1ee3c link: '+e.message;}}"
+        + "}catch(e){t='L\\u1ed7i: '+e.message;}"
+        + "b.style.whiteSpace='pre-wrap';b.textContent=t;}"
         + "async function loadMic(){var m=document.getElementById('micInfo');m.textContent='\u0110ang \u0111\u1ecdc mic...';"
         + "try{var r=await fetch('/api/audio/status');var j=await r.json();"
         + "var t='M\u1ee9c \u00e2m thanh mic: '+(j.micEnergy!=null?j.micEnergy:'?');"
@@ -1102,6 +1240,8 @@ public class WebServer extends NanoHTTPD {
         + "if(j.lastTts){t+='\\nTr\u1ee3 l\u00fd: '+j.lastTts;}"
         + "if(j.lastKeyName){t+=' | Ph\u00edm cu\u1ed1i: '+j.lastKeyName;}"
         + "if(j.micRestarts>0){t+=' | Mic t\u1ef1 kh\u1edfi \u0111\u1ed9ng l\u1ea1i: '+j.micRestarts+' l\u1ea7n';}"
+        + "if(j.verdict){t+='\\n\\nK\u1ebft lu\u1eadn: '+j.verdict;}"
+        + "if(j.advice){t+='\\nN\u00ean l\u00e0m: '+j.advice;}"
         + "b.style.whiteSpace='pre-wrap';b.textContent=t;}catch(e){}}"
         + "setInterval(function(){if(document.getElementById('voiceInfo')&&document.getElementById('tab-troly').style.display!=='none'){voiceStatus();}},4000);"
         + "async function loadAi(){var r=await fetch('/api/ai/servers');var j=await r.json();"
@@ -1109,7 +1249,7 @@ public class WebServer extends NanoHTTPD {
         + "(j.servers||[]).forEach(function(s){var o=document.createElement('option');o.value=s.id;o.textContent=s.name;if(s.id===j.current){o.selected=true;}sel.appendChild(o);});"
         + "document.getElementById('aiUrl').value=j.url||'';}"
         + "function onAiChange(){var id=document.getElementById('aiSel').value;var u=document.getElementById('aiUrl');"
-        + "if(id==='xiaozhi'){u.value='wss://xiaozhi.me/v1/ws';}else if(id==='xiaozhi_self'){u.value='ws://192.168.1.100:8000/xiaozhi/v1/';}else{u.value='';u.focus();}}"
+        + "if(id==='xiaozhi'){u.value='wss://api.tenclass.net/xiaozhi/v1/';}else if(id==='xiaozhi_self'){u.value='ws://192.168.1.100:8000/xiaozhi/v1/';}else{u.value='';u.focus();}}"
         + "async function saveAi(){var id=document.getElementById('aiSel').value;var u=document.getElementById('aiUrl').value;var t=document.getElementById('aiToken').value;"
         + "var r=await fetch('/api/settings',{method:'POST',body:JSON.stringify({ai_server:id,ai_server_url:u,ai_token:t})});var j=await r.json();"
         + "document.getElementById('aiMsg').textContent=j.ok?'\\u0110\\u00e3 l\\u01b0u m\\u00e1y ch\\u1ee7 AI. K\\u1ebft n\\u1ed1i l\\u1ea1i \\u0111\\u1ec3 \\u00e1p d\\u1ee5ng.':('L\\u1ed7i: '+j.error);}"
