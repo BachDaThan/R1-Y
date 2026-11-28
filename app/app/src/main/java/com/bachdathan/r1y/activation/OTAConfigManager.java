@@ -102,6 +102,15 @@ public class OTAConfigManager {
     /**
      * Perform OTA HTTP request
      */
+    // ---- Chẩn đoán gần nhất (hiện trên trang 8088) ----
+    private static volatile String lastOtaUrl = "";
+    private static volatile int lastHttpCode = 0;
+    private static volatile String lastResponse = "";
+
+    public static String getLastOtaUrl() { return lastOtaUrl; }
+    public static int getLastHttpCode() { return lastHttpCode; }
+    public static String getLastResponse() { return lastResponse; }
+
     private OTAResponse performOTARequest() throws Exception {
         
         // Get device identity
@@ -119,6 +128,9 @@ public class OTAConfigManager {
             "&client_id=" + clientId;
         
         Log.i(TAG, "Fetching OTA config from: " + requestUrl);
+        lastOtaUrl = requestUrl;
+        lastHttpCode = 0;
+        lastResponse = "";
         
         // Build headers (based on ota.py build_headers() - line 89-118)
         URL url = new URL(requestUrl);
@@ -166,8 +178,16 @@ public class OTAConfigManager {
             reader.close();
             
             Log.d(TAG, "OTA Response (" + statusCode + "): " + responseBody);
+            lastHttpCode = statusCode;
+            lastResponse = responseBody.length() > 600
+                ? responseBody.substring(0, 600) : responseBody;
             
-            if (statusCode != 200) {
+            // Theo đặc tả OTA của Xiaozhi: 200 = cấu hình bình thường,
+            // 202/203 = THIẾT BỊ CẦN KÍCH HOẠT (body vẫn là JSON hợp lệ có
+            // "activation":{"code":...}). Chỉ 4xx/5xx mới thực sự là lỗi.
+            // Trước đây mọi mã khác 200 đều bị coi là lỗi nên không bao giờ lấy
+            // được mã kích hoạt -> "bấm lấy mã mà cứ hiện vậy hoài".
+            if (statusCode >= 400 || responseBody == null || responseBody.trim().isEmpty()) {
                 throw new Exception("HTTP " + statusCode + ": " + responseBody);
             }
             

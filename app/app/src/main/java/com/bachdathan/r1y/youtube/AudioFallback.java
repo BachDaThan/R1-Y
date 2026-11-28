@@ -143,6 +143,54 @@ public class AudioFallback {
      * Kiểm tra bằng MediaCodecList; ROM cũ trả lời sai thì coi như KHÔNG hỗ trợ
      * (an toàn hơn: thử AAC trước).
      */
+    /**
+     * Máy này có BẮT BUỘC tránh các nguồn Opus/WebM hay không.
+     *
+     * Android 5.1 (API 22) không có bộ giải mã Opus trong MediaCodec. Trước đây
+     * app chỉ dựa vào danh sách codec của ROM; một số ROM khai báo Vorbis/WebM
+     * nên bị nhận nhầm là "có Opus". Thêm điều kiện API cho chắc: dưới API 23
+     * thì luôn tránh Opus, trừ khi người dùng tự bật "thử Opus" trên web.
+     */
+    public static boolean mustAvoidOpus(android.content.Context ctx) {
+        try {
+            if (new com.bachdathan.r1y.config.R1YConfig(ctx).isTryOpus()) return false;
+        } catch (Throwable ignored) {}
+        // Nếu ROM KHÔNG có bộ giải mã AAC/MP4 nào thì loại Opus sẽ khiến không
+        // còn nguồn nào để phát — lúc đó vẫn phải thử Opus (bậc cuối).
+        if (!deviceSupportsAac()) return false;
+        return android.os.Build.VERSION.SDK_INT < 23 || !deviceSupportsOpus();
+    }
+
+    private static Boolean sAacSupport = null;
+
+    /** Máy có bộ giải mã AAC/MP4 (audio/mp4a-latm) không. */
+    public static synchronized boolean deviceSupportsAac() {
+        if (sAacSupport != null) return sAacSupport.booleanValue();
+        boolean ok = false;
+        try {
+            int n = android.media.MediaCodecList.getCodecCount();
+            for (int i = 0; i < n && !ok; i++) {
+                android.media.MediaCodecInfo info =
+                    android.media.MediaCodecList.getCodecInfoAt(i);
+                if (info == null || info.isEncoder()) continue;
+                String[] types = info.getSupportedTypes();
+                if (types == null) continue;
+                for (String t : types) {
+                    if (t == null) continue;
+                    String l = t.toLowerCase();
+                    if (l.contains("mp4a") || l.contains("aac")) {
+                        ok = true;
+                        break;
+                    }
+                }
+            }
+        } catch (Throwable t) {
+            ok = true;   // không đọc được thì đừng chặn
+        }
+        sAacSupport = Boolean.valueOf(ok);
+        return ok;
+    }
+
     public static synchronized boolean deviceSupportsOpus() {
         if (sOpusSupport != null) return sOpusSupport.booleanValue();
         boolean ok = false;
@@ -157,8 +205,13 @@ public class AudioFallback {
                 for (String t : types) {
                     if (t == null) continue;
                     String l = t.toLowerCase();
-                    if (l.contains("opus") || l.equals("audio/webm")
-                            || l.equals("audio/vorbis")) {
+                    // CHỈ đếm đúng "opus". Trước đây chỗ này nhận cả
+                    // audio/webm và audio/vorbis, nên trên R1 (ROM có codec
+                    // Vorbis cho WebM) nó kết luận "có Opus" -> vẫn chọn WebM
+                    // -> MediaPlayer báo đang phát rồi im. Đây chính là lỗi
+                    // trong ảnh chẩn đoán: "magic webm/matroska" mà vẫn báo
+                    // "Codec: có Opus (dùng được cả Opus lẫn AAC)".
+                    if (l.contains("opus")) {
                         ok = true;
                         break;
                     }
@@ -177,7 +230,14 @@ public class AudioFallback {
      * Nhờ vậy loa chọn AAC/m4a ngay từ đầu thay vì lỗi rồi mới hạ bậc.
      */
     public static List<Candidate> demoteOpusIfUnsupported(List<Candidate> list) {
-        if (list == null || list.isEmpty() || deviceSupportsOpus()) return list;
+        return demoteOpusIfUnsupported(list, null);
+    }
+
+    /** @param ctx null = chỉ dựa vào danh sách codec + mức Android */
+    public static List<Candidate> demoteOpusIfUnsupported(List<Candidate> list,
+                                                          android.content.Context ctx) {
+        boolean avoid = ctx != null ? mustAvoidOpus(ctx) : !deviceSupportsOpus();
+        if (list == null || list.isEmpty() || !avoid) return list;
         List<Candidate> keep = new ArrayList<Candidate>();
         List<Candidate> opus = new ArrayList<Candidate>();
         for (Candidate c : list) {

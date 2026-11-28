@@ -7,6 +7,8 @@ public final class ActivationState {
     public static volatile boolean activated = false;
     public static volatile int attempt = 0;
     public static volatile int max = 0;
+    /** Đang làm gì ở bước hỏi máy chủ (chuỗi hiển thị trên web). */
+    public static volatile String fetchStatus = "";
 
     private ActivationState() {}
 }

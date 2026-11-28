@@ -65,9 +65,21 @@ public class DeviceActivator {
      */
     public void startActivation() {
         if (isActivating.getAndSet(true)) {
-            Log.w(TAG, "Activation already in progress");
+            // Trước đây chỗ này chỉ ghi log rồi return -> trên web bấm "Lấy mã"
+            // mà KHÔNG thấy gì xảy ra, không mã, không lỗi, không tiến trình.
+            // Giờ ghi rõ trạng thái để trang 8088 hiển thị được.
+            Log.w(TAG, "Đang kích hoạt dở — báo lại trạng thái hiện tại");
+            if (ActivationState.code == null || ActivationState.code.isEmpty()) {
+                notifyError("Đang lấy mã… (lần trước chưa xong). Đợi ~20 giây rồi bấm lại.");
+            } else {
+                notifyError("");
+            }
             return;
         }
+
+        ActivationState.error = "";
+        ActivationState.attempt = 0;
+        ActivationState.max = MAX_RETRIES;
         
         if (fingerprint.isActivated()) {
             Log.i(TAG, "Device already activated");
